@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# 备份 application.yaml 文件
+
+message="message-service/src/main/resources/application.yaml"
+messagebak="message-service/src/main/resources/application.yaml.bak"
+
+user="user-service/src/main/resources/application.yaml"
+userbak="user-service/src/main/resources/application.yaml.bak"
+
+cp "$message" "$messagebak"
+cp "$user" "$userbak"
+
+# 使用 sed 修改 application.yaml 文件
+sed -i -f remove_msg_rules.sed "$message"
+sed -i -f remove_msg_rules.sed "$user"
+
+git add  "$message"
+git add  "$user"
+
+echo "finish pre-commit"  

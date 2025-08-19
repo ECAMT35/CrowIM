@@ -1,0 +1,15 @@
+#!/bin/sh
+
+messsage="message-service/src/main/resources/application.yaml"
+messagebak="message-service/src/main/resources/application.yaml.bak"
+
+user="user-service/src/main/resources/application.yaml"
+userbak="user-service/src/main/resources/application.yaml.bak"
+
+cp "$messagebak" "$messsage" 
+rm "$messagebak" 
+
+cp "$userbak" "$user" 
+rm "$userbak" 
+
+echo "finish post-commit"
