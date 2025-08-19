@@ -5,11 +5,12 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.5.3</version>
+        <version>3.3.13</version>
     </parent>
 
     <modules>
         <module>message-service</module>
+        <module>user-service</module>
     </modules>
 
     <groupId>com.ecamt35</groupId>
@@ -33,21 +34,24 @@
     </scm>
     <properties>
         <java.version>17</java.version>
-        <spring-boot-starter-reactor-netty.version>3.5.3</spring-boot-starter-reactor-netty.version>
         <mysql-connector-j.version>9.4.0</mysql-connector-j.version>
         <mybatis.version>3.5.12</mybatis.version>
         <lombok.version>1.18.38</lombok.version>
-        <!--            -->
-        <!--            <spring-boot-starter-web.version>3.3.2</spring-boot-starter-web.version>-->
-        <!--            -->
-        <!--            <mybatis-plus-spring-boot3-starter.version>3.5.8</mybatis-plus-spring-boot3-starter.version>-->
-        <!--            <mariadb-java-client.version>3.4.1</mariadb-java-client.version>-->
-        <!--            <sa-token-redis-jackson.version>1.38.0</sa-token-redis-jackson.version>-->
-        <!--            <sa-token-spring-boot3-starter.version>1.38.0</sa-token-spring-boot3-starter.version>-->
-        <!--            <knife4j-openapi3-jakarta-spring-boot-starter>4.4.0</knife4j-openapi3-jakarta-spring-boot-starter>-->
+        <spring-boot-starter-web.version>3.5.3</spring-boot-starter-web.version>
+        <mybatis-plus-spring-boot3-starter.version>3.5.12</mybatis-plus-spring-boot3-starter.version>
+
+        <sa-token-spring-boot3-starter.version>1.44.0</sa-token-spring-boot3-starter.version>
+        <sa-token-redis-template.version>1.44.0</sa-token-redis-template.version>
+        <commons-pool2>2.12.1</commons-pool2>
+
+        <knife4j>4.5.0</knife4j>
         <hutool-core.version>5.8.39</hutool-core.version>
         <redisson-spring-boot-starter.version>3.50.0</redisson-spring-boot-starter.version>
         <spring-boot-starter-amqp.version>3.5.4</spring-boot-starter-amqp.version>
+
+        <spring-boot-starter-freemarker.version>3.5.4</spring-boot-starter-freemarker.version>
+        <spring-boot-starter-mail.version>3.5.4</spring-boot-starter-mail.version>
+
         <!--            <nacos-discovery.version>2023.0.1.2</nacos-discovery.version>-->
         <!--            <dubbo.version>3.3.0</dubbo.version>-->
     </properties>
@@ -55,22 +59,11 @@
     <dependencyManagement>
 
         <dependencies>
-            <dependency>
-                <groupId>org.springframework.boot</groupId>
-                <artifactId>spring-boot-starter-reactor-netty</artifactId>
-                <version>${spring-boot-starter-reactor-netty.version}</version>
-            </dependency>
 
             <dependency>
                 <groupId>com.mysql</groupId>
                 <artifactId>mysql-connector-j</artifactId>
                 <version>${mysql-connector-j.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.mybatis</groupId>
-                <artifactId>mybatis</artifactId>
-                <version>${mybatis.version}</version>
             </dependency>
 
             <dependency>
@@ -80,39 +73,45 @@
             </dependency>
 
             <!-- mybatis-plus -->
-            <!--                    <dependency>-->
-            <!--                        <groupId>com.baomidou</groupId>-->
-            <!--                        <artifactId>mybatis-plus-spring-boot3-starter</artifactId>-->
-            <!--                        <version>${mybatis-plus-spring-boot3-starter.version}</version>-->
-            <!--                    </dependency>-->
-
+            <dependency>
+                <groupId>com.baomidou</groupId>
+                <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+                <version>${mybatis-plus-spring-boot3-starter.version}</version>
+            </dependency>
 
             <!-- Sa-Token -->
-            <!--                    <dependency>-->
-            <!--                        <groupId>cn.dev33</groupId>-->
-            <!--                        <artifactId>sa-token-spring-boot3-starter</artifactId>-->
-            <!--                        <version>${sa-token-spring-boot3-starter.version}</version>-->
-            <!--                    </dependency>-->
-            <!-- Sa-Token 整合 Redis （使用 jackson 序列化方式） -->
-            <!--                    <dependency>-->
-            <!--                        <groupId>cn.dev33</groupId>-->
-            <!--                        <artifactId>sa-token-redis-jackson</artifactId>-->
-            <!--                        <version>${sa-token-redis-jackson.version}</version>-->
-            <!--                    </dependency>-->
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-spring-boot3-starter</artifactId>
+                <version>${sa-token-spring-boot3-starter.version}</version>
+            </dependency>
+            <!-- Sa-Token 整合 RedisTemplate -->
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-redis-template</artifactId>
+                <version>${sa-token-redis-template.version}</version>
+            </dependency>
+            <!-- 提供 Redis 连接池 -->
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-pool2</artifactId>
+                <version>${commons-pool2}</version>
+            </dependency>
+
 
             <!-- knife4j -->
-            <!--                    <dependency>-->
-            <!--                        <groupId>com.github.xiaoymin</groupId>-->
-            <!--                        <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>-->
-            <!--                        <version>${knife4j-openapi3-jakarta-spring-boot-starter}</version>-->
-            <!--                    </dependency>-->
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi3-jakarta-spring-boot-starter</artifactId>
+                <version>${knife4j}</version>
+            </dependency>
 
             <!-- web框架 -->
-            <!--                    <dependency>-->
-            <!--                        <groupId>org.springframework.boot</groupId>-->
-            <!--                        <artifactId>spring-boot-starter-web</artifactId>-->
-            <!--                        <version>${spring-boot-starter-web.version}</version>-->
-            <!--                    </dependency>-->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-web</artifactId>
+                <version>${spring-boot-starter-web.version}</version>
+            </dependency>
 
             <!-- hutool-core -->
             <dependency>
@@ -134,6 +133,18 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-amqp</artifactId>
                 <version>${spring-boot-starter-amqp.version}</version>
+            </dependency>
+
+            <!--   邮箱部分   -->
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-mail</artifactId>
+                <version>${spring-boot-starter-mail.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-starter-freemarker</artifactId>
+                <version>${spring-boot-starter-freemarker.version}</version>
             </dependency>
 
             <!--                    &lt;!&ndash; Nacos Spring Cloud discovery&ndash;&gt;-->
