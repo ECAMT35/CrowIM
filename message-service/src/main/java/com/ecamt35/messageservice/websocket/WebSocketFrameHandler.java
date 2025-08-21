@@ -1,15 +1,17 @@
 package com.ecamt35.messageservice.websocket;
 
-import cn.hutool.core.lang.Snowflake;
-import cn.hutool.core.util.IdUtil;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
+import com.ecamt35.messageservice.model.dto.ImMessageDto;
+import com.ecamt35.messageservice.model.vo.MessageAckVo;
+import com.ecamt35.messageservice.model.vo.PushVo;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
@@ -24,11 +26,8 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
     @Resource
     private MessageService messageService;
 
-    @Value("${snowflake.worker-id}")
-    private long workerId;
-
-    @Value("${snowflake.data-center-id}")
-    private long dataCenterId;
+    // Jackson的对象映射器，用于JSON解析
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     //客户端注册命令前缀，格式为 "REGISTER:<userId>"。
     private static final String REGISTER_CMD = "REGISTER:";
@@ -114,30 +113,50 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
      * @param message 接收到的消息内容
      */
     private void handleUserMessage(ChannelHandlerContext ctx, String message) {
-        int separatorIndex = message.indexOf(':');
-        if (separatorIndex <= 0 || separatorIndex == message.length() - 1) {
+        //已注册，所以接下来的内容是json
+        ImMessageDto imMessageDto;
+        try {
+            imMessageDto = objectMapper.readValue(message, ImMessageDto.class);
+        } catch (JsonProcessingException e) {
             ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
-            return;
+            log.error("Invalid message format: {}", message);
+            throw new RuntimeException(e);
         }
 
-        Long targetUserId = Long.parseLong(message.substring(0, separatorIndex));
-        String content = message.substring(separatorIndex + 1);
+        Long receiverId = imMessageDto.getReceiverId();
+        String content = imMessageDto.getContent();
+        Integer messageType = imMessageDto.getMessage_type();
         Long senderId = messageService.getUserId(ctx.channel());
-
-        // 参数1为终端ID
-        // 参数2为数据中心ID
-        Snowflake snowflake = IdUtil.getSnowflake(workerId, dataCenterId);
-        long id = snowflake.nextId();
+        Long messageId = imMessageDto.getMessageId();
 
         SendMessageBo sendMessageBo = new SendMessageBo();
         sendMessageBo.setSenderId(senderId);
-        sendMessageBo.setTargetUserId(targetUserId);
+        sendMessageBo.setReceiverId(receiverId);
         sendMessageBo.setMessage(content);
-        sendMessageBo.setMessageId(id);
-        sendMessageBo.setTimestamp(System.currentTimeMillis());
+        sendMessageBo.setMessageType(messageType);
+        sendMessageBo.setMessageId(messageId);
+        Long sendTime = System.currentTimeMillis();
+        sendMessageBo.setSendTime(sendTime);
 
+        // Msg:N
         messageService.sendMessageToMQ(sendMessageBo);
 
+        // Msg:A
+        MessageAckVo messageAckVo = new MessageAckVo();
+        messageAckVo.setMessageId(messageId);
+        messageAckVo.setSendTime(sendTime);
+
+        PushVo pushVo = new PushVo(2, messageAckVo);
+
+        String pushVoJson;
+        try {
+            pushVoJson = objectMapper.writeValueAsString(pushVo);
+        } catch (JsonProcessingException e) {
+            ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+            log.error("Invalid message format: {}", pushVo);
+            throw new RuntimeException(e);
+        }
+        ctx.writeAndFlush(new TextWebSocketFrame(pushVoJson));
     }
 
     /**

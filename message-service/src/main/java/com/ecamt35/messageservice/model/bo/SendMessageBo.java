@@ -4,9 +4,10 @@ import lombok.Data;
 
 @Data
 public class SendMessageBo {
-    private Long targetUserId;
+    private Long receiverId;
     private String message;
+    private Integer messageType;
     private Long senderId;
     private Long messageId;
-    private Long timestamp;
+    private Long sendTime;
 }

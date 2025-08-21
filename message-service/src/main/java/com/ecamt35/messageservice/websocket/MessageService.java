@@ -2,6 +2,9 @@ package com.ecamt35.messageservice.websocket;
 
 import com.ecamt35.messageservice.config.NodeName;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
+import com.ecamt35.messageservice.model.vo.PushVo;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import jakarta.annotation.Resource;
@@ -25,6 +28,8 @@ public class MessageService {
 
     @Resource
     private RedisTemplate<String, String> redisTemplate;
+
+    private static final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 注册用户与通道绑定
@@ -51,38 +56,40 @@ public class MessageService {
      * 向指定用户发送消息
      */
     public void sendMessageToUser(SendMessageBo sendMessageBo) {
-        Channel channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getTargetUserId());
+        Channel channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
 
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append(sendMessageBo.getMessageId());
-        stringBuilder.append(":");
-        stringBuilder.append(sendMessageBo.getSenderId());
-        stringBuilder.append(":");
-        stringBuilder.append(sendMessageBo.getTimestamp());
-        stringBuilder.append(":");
-        stringBuilder.append(sendMessageBo.getMessage());
+        // 统一返回格式
+        PushVo pushVo = new PushVo(1, sendMessageBo);
+
+        String pushVoJson;
+        try {
+            pushVoJson = objectMapper.writeValueAsString(pushVo);
+        } catch (JsonProcessingException e) {
+            log.error("Invalid message format: {}", sendMessageBo);
+            throw new RuntimeException(e);
+        }
 
         if (channel != null && channel.isActive()) {
-            channel.writeAndFlush(new TextWebSocketFrame(stringBuilder.toString()));
+            channel.writeAndFlush(new TextWebSocketFrame(pushVoJson));
             return;
         }
 
         // 重新检查节点是否为本机
         String nodeKey = (String) redisTemplate.opsForHash().get(
                 USER_ONLINE_STATUS_KEY,
-                String.valueOf(sendMessageBo.getTargetUserId())
+                String.valueOf(sendMessageBo.getReceiverId())
         );
 
         if (NodeName.NODE_NAME.equals(nodeKey)) {
             // 再次尝试获取Channel
-            channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getTargetUserId());
+            channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
             if (channel != null && channel.isActive()) {
-                channel.writeAndFlush(new TextWebSocketFrame(stringBuilder.toString()));
+                channel.writeAndFlush(new TextWebSocketFrame(pushVoJson));
                 return;
             }
 
-            // exist?
-            // send to DB, not fount status in redis
+            // messageJson exist?
+            // send to DB, if not fount status in redis
             // todo
 
         } else {
@@ -109,7 +116,7 @@ public class MessageService {
 
         String nodeKey = (String) redisTemplate.opsForHash().get(
                 USER_ONLINE_STATUS_KEY,
-                String.valueOf(sendMessageBo.getTargetUserId())
+                String.valueOf(sendMessageBo.getReceiverId())
         );
 
         StringBuilder stringBuilder = new StringBuilder();
