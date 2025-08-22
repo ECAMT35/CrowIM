@@ -2,10 +2,12 @@ package com.ecamt35.messageservice.model.vo;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @AllArgsConstructor
+@NoArgsConstructor
 public class PushVo {
-    private Integer type; //1=message, 2=ack
+    private Integer type; // MessageType
     private Object data;
 }

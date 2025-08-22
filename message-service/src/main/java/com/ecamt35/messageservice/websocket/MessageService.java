@@ -1,6 +1,7 @@
 package com.ecamt35.messageservice.websocket;
 
 import com.ecamt35.messageservice.config.NodeName;
+import com.ecamt35.messageservice.constant.PacketTypeConstant;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
 import com.ecamt35.messageservice.model.vo.PushVo;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -59,7 +60,7 @@ public class MessageService {
         Channel channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
 
         // 统一返回格式
-        PushVo pushVo = new PushVo(1, sendMessageBo);
+        PushVo pushVo = new PushVo(PacketTypeConstant.SERVER_REQUEST_SENT, sendMessageBo);
 
         String pushVoJson;
         try {
@@ -85,12 +86,7 @@ public class MessageService {
             channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
             if (channel != null && channel.isActive()) {
                 channel.writeAndFlush(new TextWebSocketFrame(pushVoJson));
-                return;
             }
-
-            // messageJson exist?
-            // send to DB, if not fount status in redis
-            // todo
 
         } else {
             // 转发到目标节点
@@ -131,13 +127,7 @@ public class MessageService {
                     key,
                     sendMessageBo
             );
-        } else {
-            // exist?
-            // send to DB, not fount status in redis
-            // todo
-
         }
-
 
     }
 }

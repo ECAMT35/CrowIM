@@ -1,9 +1,12 @@
 package com.ecamt35.messageservice.websocket;
 
+import com.ecamt35.messageservice.constant.PacketTypeConstant;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
 import com.ecamt35.messageservice.model.dto.ImMessageDto;
+import com.ecamt35.messageservice.model.entity.MessagePrivateChat;
 import com.ecamt35.messageservice.model.vo.MessageAckVo;
 import com.ecamt35.messageservice.model.vo.PushVo;
+import com.ecamt35.messageservice.service.MessagePrivateChatService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.ChannelHandlerContext;
@@ -35,6 +38,9 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
     private static final String MESSAGE_FORMAT_ERROR = "ERROR:Invalid message format. Use 'targetUserId:message'";
     private static final String REGISTRATION_REQUIRED = "ERROR:Please register first by sending REGISTER:<your-user-id>";
     private static final String WELCOME_MESSAGE = "Welcome! Please register by sending: REGISTER:<your-user-id>";
+
+    @Resource
+    private MessagePrivateChatService messagePrivateChatService;
 
     /**
      * 当新连接建立时触发，发送欢迎信息并初始化连接状态。
@@ -96,6 +102,10 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
                 long userId = Long.parseLong(message.substring(REGISTER_CMD.length()).trim());
                 messageService.registerUser(userId, ctx.channel()); // 调用业务服务注册用户
                 ctx.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS)); // 返回注册成功
+
+                // todo
+                // 登陆后获取一次status=sent的消息
+
             } catch (NumberFormatException e) {
                 log.warn("Invalid user ID format: {}", message);
                 ctx.writeAndFlush(new TextWebSocketFrame("ERROR:Invalid user ID format"));
@@ -123,40 +133,101 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             throw new RuntimeException(e);
         }
 
+        // 先判断这个报文是干啥的，用户的ack回应还是转发信息
+        Integer packetType = imMessageDto.getType();
+        if (packetType == null) {
+            ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+            log.error("Invalid message format: {}", message);
+        }
+
         Long receiverId = imMessageDto.getReceiverId();
         String content = imMessageDto.getContent();
-        Integer messageType = imMessageDto.getMessage_type();
+        Integer messageType = imMessageDto.getChatType();
         Long senderId = messageService.getUserId(ctx.channel());
         Long messageId = imMessageDto.getMessageId();
 
-        SendMessageBo sendMessageBo = new SendMessageBo();
-        sendMessageBo.setSenderId(senderId);
-        sendMessageBo.setReceiverId(receiverId);
-        sendMessageBo.setMessage(content);
-        sendMessageBo.setMessageType(messageType);
-        sendMessageBo.setMessageId(messageId);
-        Long sendTime = System.currentTimeMillis();
-        sendMessageBo.setSendTime(sendTime);
+        if (packetType == PacketTypeConstant.CLIENT_REQUEST_SENT) {
 
-        // Msg:N
-        messageService.sendMessageToMQ(sendMessageBo);
+            SendMessageBo sendMessageBo = new SendMessageBo();
+            sendMessageBo.setSenderId(senderId);
+            sendMessageBo.setReceiverId(receiverId);
+            sendMessageBo.setMessage(content);
+            sendMessageBo.setMessageType(messageType);
+            sendMessageBo.setMessageId(messageId);
+            Long sendTime = System.currentTimeMillis();
+            sendMessageBo.setSendTime(sendTime);
 
-        // Msg:A
-        MessageAckVo messageAckVo = new MessageAckVo();
-        messageAckVo.setMessageId(messageId);
-        messageAckVo.setSendTime(sendTime);
+            // 存储到DB
+            MessagePrivateChat messagePrivateChat = new MessagePrivateChat(
+                    messageId, senderId, receiverId, content, messageType, 1, sendTime, null
+            );
+            messagePrivateChatService.saveOrUpdate(messagePrivateChat);
 
-        PushVo pushVo = new PushVo(2, messageAckVo);
+            // Msg:N
+            messageService.sendMessageToMQ(sendMessageBo);
 
-        String pushVoJson;
-        try {
-            pushVoJson = objectMapper.writeValueAsString(pushVo);
-        } catch (JsonProcessingException e) {
-            ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
-            log.error("Invalid message format: {}", pushVo);
-            throw new RuntimeException(e);
+            // Msg:A
+            MessageAckVo messageAckVo = new MessageAckVo();
+            messageAckVo.setMessageId(messageId);
+            messageAckVo.setSendTime(sendTime);
+
+            PushVo pushVo = new PushVo(PacketTypeConstant.SERVER_ACK_SENT, messageAckVo);
+
+            String pushVoJson;
+            try {
+                pushVoJson = objectMapper.writeValueAsString(pushVo);
+            } catch (JsonProcessingException e) {
+                ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+                log.error("Invalid message format: {}", pushVo);
+                throw new RuntimeException(e);
+            }
+            ctx.writeAndFlush(new TextWebSocketFrame(pushVoJson));
+
+        } else if (packetType == PacketTypeConstant.CLIENT_ACK_RECEIVED) {
+            // 更新消息状态
+            int updated = messagePrivateChatService.updateStatusDelivered(messageId, receiverId);
+            log.info("Updated status delivered: {}, messageId: {}", updated, messageId);
+
+            MessageAckVo messageAckVo = new MessageAckVo();
+            messageAckVo.setMessageId(messageId);
+
+            PushVo pushVo = new PushVo(PacketTypeConstant.SERVER_ACK_RECEIVED, messageAckVo);
+
+            String pushVoJson;
+            try {
+                pushVoJson = objectMapper.writeValueAsString(pushVo);
+            } catch (JsonProcessingException e) {
+                ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+                log.error("Invalid message format: {}", pushVo);
+                throw new RuntimeException(e);
+            }
+            ctx.writeAndFlush(new TextWebSocketFrame(pushVoJson));
+
+        } else if (packetType == PacketTypeConstant.CLIENT_ACK_READ) {
+            // 更新消息状态
+            int updated = messagePrivateChatService.updateStatusRead(messageId, receiverId);
+            log.info("Updated status read: {}, messageId: {}", updated, messageId);
+
+            MessageAckVo messageAckVo = new MessageAckVo();
+            messageAckVo.setMessageId(messageId);
+
+            PushVo pushVo = new PushVo(PacketTypeConstant.SERVER_ACK_READ, messageAckVo);
+
+            String pushVoJson;
+            try {
+                pushVoJson = objectMapper.writeValueAsString(pushVo);
+            } catch (JsonProcessingException e) {
+                ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+                log.error("Invalid message format: {}", pushVo);
+                throw new RuntimeException(e);
+            }
+            ctx.writeAndFlush(new TextWebSocketFrame(pushVoJson));
+
+        } else if (packetType == PacketTypeConstant.CLIENT_REQUEST_READ_LIST) {
+
+            // todo
+
         }
-        ctx.writeAndFlush(new TextWebSocketFrame(pushVoJson));
     }
 
     /**
