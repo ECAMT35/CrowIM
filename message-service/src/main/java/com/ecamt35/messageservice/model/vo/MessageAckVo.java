@@ -6,4 +6,5 @@ import lombok.Data;
 public class MessageAckVo {
     private Long messageId;
     private Long sendTime;
+    private boolean status;
 }

@@ -133,29 +133,36 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             throw new RuntimeException(e);
         }
 
-        // 先判断这个报文是干啥的，用户的ack回应还是转发信息
-        Integer packetType = imMessageDto.getType();
-        if (packetType == null) {
-            ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
-            log.error("Invalid message format: {}", message);
-        }
-
-        Long receiverId = imMessageDto.getReceiverId();
+        Integer packetType = imMessageDto.getPacketType();
         String content = imMessageDto.getContent();
-        Integer messageType = imMessageDto.getChatType();
-        Long senderId = messageService.getUserId(ctx.channel());
         Long messageId = imMessageDto.getMessageId();
 
+        if (packetType == null || content == null || content.isEmpty() || messageId == null) {
+            ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+            log.error("Invalid message format: {}", message);
+            return;
+        }
+
+        // 先判断这个报文是干啥的，用户的ack回应还是转发信息
         if (packetType == PacketTypeConstant.CLIENT_REQUEST_SENT) {
 
-            SendMessageBo sendMessageBo = new SendMessageBo();
-            sendMessageBo.setSenderId(senderId);
-            sendMessageBo.setReceiverId(receiverId);
-            sendMessageBo.setMessage(content);
-            sendMessageBo.setMessageType(messageType);
-            sendMessageBo.setMessageId(messageId);
+            Integer chatType = imMessageDto.getChatType();
+            Integer messageType = imMessageDto.getMessageType();
+            Long receiverId = imMessageDto.getReceiverId();
+
+            Long senderId = messageService.getUserId(ctx.channel());
             Long sendTime = System.currentTimeMillis();
-            sendMessageBo.setSendTime(sendTime);
+
+            if (chatType == null || messageType == null || receiverId == null) {
+                ctx.writeAndFlush(new TextWebSocketFrame(MESSAGE_FORMAT_ERROR));
+                log.error("Invalid message format: {}", message);
+            }
+
+            SendMessageBo sendMessageBo = new SendMessageBo(
+                    receiverId, content, chatType, messageType, senderId, messageId, sendTime
+            );
+
+            // 以下均为单聊的处理，群聊判断chatType=0其他处理
 
             // 存储到DB
             MessagePrivateChat messagePrivateChat = new MessagePrivateChat(
@@ -185,6 +192,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
 
         } else if (packetType == PacketTypeConstant.CLIENT_ACK_RECEIVED) {
             // 更新消息状态
+            Long receiverId = messageService.getUserId(ctx.channel());
             int updated = messagePrivateChatService.updateStatusDelivered(messageId, receiverId);
             log.info("Updated status delivered: {}, messageId: {}", updated, messageId);
 
@@ -205,6 +213,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
 
         } else if (packetType == PacketTypeConstant.CLIENT_ACK_READ) {
             // 更新消息状态
+            Long receiverId = messageService.getUserId(ctx.channel());
             int updated = messagePrivateChatService.updateStatusRead(messageId, receiverId);
             log.info("Updated status read: {}, messageId: {}", updated, messageId);
 

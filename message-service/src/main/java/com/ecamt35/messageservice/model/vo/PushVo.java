@@ -8,6 +8,6 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class PushVo {
-    private Integer type; // MessageType
+    private Integer packetType; // MessageType
     private Object data;
 }

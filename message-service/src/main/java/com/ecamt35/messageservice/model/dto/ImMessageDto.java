@@ -4,10 +4,12 @@ import lombok.Data;
 
 @Data
 public class ImMessageDto {
-    private Integer type; // 1=sent, 2=ack_delivered, 3=ack_read, 4=get_read,
+    private Integer packetType;
     private Long messageId;
-    // 消息类型：SINGLE_CHAT(0)、GROUP_CHAT(1)
+    // SINGLE_CHAT(1)、GROUP_CHAT(2)
     private Integer chatType;
+    // 消息类型：1-文本，2-图片
+    private Integer messageType;
     private Long receiverId;
     private String content;
 }
