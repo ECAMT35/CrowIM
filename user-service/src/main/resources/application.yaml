@@ -10,19 +10,19 @@ spring:
 #username: TODO
 #password: TODO
 
-  data:
-    redis:
-#host: TODO
-      database: 0
-#port: TODO
-#password: TODO
-      timeout: 10s
-      lettuce:
-        pool:
-          max-active: 500
-          max-wait: -1ms
-          max-idle: 10
-          min-idle: 0
+  #  data:
+  #    redis:
+  #      host: 192.168.6.145
+  #      database: 0
+  #      port: 6499
+  #      password: 'crow'
+  #      timeout: 10s
+  #      lettuce:
+  #        pool:
+  #          max-active: 500
+  #          max-wait: -1ms
+  #          max-idle: 10
+  #          min-idle: 0
 
   rabbitmq:
 #host: TODO
