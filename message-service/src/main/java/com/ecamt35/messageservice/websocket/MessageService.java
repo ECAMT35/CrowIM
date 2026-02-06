@@ -7,6 +7,7 @@ import com.ecamt35.messageservice.model.vo.PushVo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
+import io.netty.channel.ChannelId;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
@@ -22,7 +23,8 @@ import static com.ecamt35.messageservice.websocket.UserChannelRegistry.USER_ONLI
 @RequiredArgsConstructor
 public class MessageService {
 
-    private final UserChannelRegistry userChannelRegistry;
+    @Resource
+    private UserChannelRegistry userChannelRegistry;
 
     @Resource
     private RabbitTemplate rabbitTemplate;
@@ -30,7 +32,8 @@ public class MessageService {
     @Resource
     private RedisTemplate<String, String> redisTemplate;
 
-    private static final ObjectMapper objectMapper = new ObjectMapper();
+    @Resource
+    private ObjectMapper objectMapper;
 
     /**
      * 注册用户与通道绑定
@@ -57,11 +60,9 @@ public class MessageService {
      * 向指定用户发送消息
      */
     public void sendMessageToUser(SendMessageBo sendMessageBo) {
-        Channel channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
 
         // 统一返回格式
         PushVo pushVo = new PushVo(PacketTypeConstant.SERVER_REQUEST_SENT, sendMessageBo);
-
         String pushVoJson;
         try {
             pushVoJson = objectMapper.writeValueAsString(pushVo);
@@ -70,24 +71,23 @@ public class MessageService {
             throw new RuntimeException(e);
         }
 
-        if (channel != null && channel.isActive()) {
-            channel.writeAndFlush(new TextWebSocketFrame(pushVoJson));
-            return;
-        }
-
         // 重新检查节点是否为本机
         String nodeKey = (String) redisTemplate.opsForHash().get(
                 USER_ONLINE_STATUS_KEY,
                 String.valueOf(sendMessageBo.getReceiverId())
         );
+        if (nodeKey == null || nodeKey.isBlank()) {
+            log.info("User {} is offline, skip forward message", sendMessageBo.getReceiverId());
+            return;
+        }
 
+        Channel channel;
         if (NodeName.NODE_NAME.equals(nodeKey)) {
-            // 再次尝试获取Channel
+            // 尝试获取Channel
             channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
-            if (channel != null && channel.isActive()) {
-                channel.writeAndFlush(new TextWebSocketFrame(pushVoJson));
+            if (channel != null && channel.isActive() && channel.isWritable()) {
+                channel.eventLoop().execute(() -> channel.writeAndFlush(new TextWebSocketFrame(pushVoJson)));
             }
-
         } else {
             // 转发到目标节点
             StringBuilder sb = new StringBuilder();
@@ -100,34 +100,17 @@ public class MessageService {
                     key,
                     sendMessageBo
             );
-
         }
-
     }
 
     /**
-     * 向MQ发送消息
+     * 根据 ChannelId 获取 Channel
      */
-    public void sendMessageToMQ(SendMessageBo sendMessageBo) {
-
-        String nodeKey = (String) redisTemplate.opsForHash().get(
-                USER_ONLINE_STATUS_KEY,
-                String.valueOf(sendMessageBo.getReceiverId())
-        );
-
-        StringBuilder stringBuilder = new StringBuilder();
-        stringBuilder.append("websocket-message-");
-        stringBuilder.append(nodeKey);
-        String exchange = stringBuilder + ".direct";
-        String key = stringBuilder.toString();
-
-        if (nodeKey != null) {
-            rabbitTemplate.convertAndSend(
-                    exchange,
-                    key,
-                    sendMessageBo
-            );
+    public Channel getChannel(ChannelId channelId) {
+        if (channelId == null) {
+            log.warn("ChannelId is null");
+            return null;
         }
-
+        return userChannelRegistry.getChannel(channelId);
     }
 }

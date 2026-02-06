@@ -3,10 +3,10 @@ package com.ecamt35.messageservice.mapper;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.ecamt35.messageservice.model.entity.MessagePrivateChat;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
-import org.apache.ibatis.annotations.Update;
 
-import java.util.List;
+import java.util.Set;
 
 /**
  * (MessagePrivateChat)数据库访问层
@@ -17,16 +17,9 @@ import java.util.List;
 @Mapper
 public interface MessagePrivateChatMapper extends BaseMapper<MessagePrivateChat> {
 
-    @Update("update message_private_chat set status=2, push_time=#{pushTime} where id=#{messagePrivateChatId} and receiver_id=#{receiverId} and status=1")
-    int updateStatusDelivered(Long messagePrivateChatId, Long receiverId, Long pushTime);
+    int updateStatusToReadBatch(@Param("ids") Set<Long> ids, @Param("userId") Long userId);
 
-    @Update("update message_private_chat set status=3 where id=#{messagePrivateChatId} and receiver_id=#{receiverId} and status=2")
-    int updateStatusRead(Long messagePrivateChatId, Long receiverId);
+    @Select("select id,send_time from message_private_chat where client_msg_id=#{msgId} and sender_id=#{senderId}")
+    MessagePrivateChat findByClientMsgId(Long msgId, Long senderId);
 
-    @Update("update message_private_chat set status=4 where id=#{messagePrivateChatId} and sender_id=#{senderId} and status=3")
-    int updateStatusFinished(Long messagePrivateChatId, Long senderId);
-
-    @Select("select id from message_private_chat where sender_id=#{senderId} and receiver_id=#{receiverId} and status=3")
-    List<Long> getReadByReceiverId(Long senderId, Long receiverId);
 }
-

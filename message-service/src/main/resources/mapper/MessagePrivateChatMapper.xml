@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.ecamt35.messageservice.mapper.MessagePrivateChatMapper">
+    <update id="updateStatusToReadBatch">
+        UPDATE message_private_chat SET status = 2
+        WHERE id IN
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        AND receiver_id = #{userId}
+        AND status != 2
+    </update>
+</mapper>

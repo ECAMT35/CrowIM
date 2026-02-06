@@ -5,6 +5,6 @@ import lombok.Data;
 @Data
 public class MessageAckVo {
     private Long messageId;
+    private Long clientMsgId;
     private Long sendTime;
-    private boolean status;
 }

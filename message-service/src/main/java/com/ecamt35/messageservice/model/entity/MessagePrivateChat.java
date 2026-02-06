@@ -5,6 +5,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.Date;
+
 /**
  * (MessagePrivateChat)实体类
  *
@@ -21,6 +23,10 @@ public class MessagePrivateChat {
      */
     private Long id;
     /**
+     * 客户端生成的消息ID
+     */
+    private Long clientMsgId;
+    /**
      * 发送者ID
      */
     private Long senderId;
@@ -33,11 +39,11 @@ public class MessagePrivateChat {
      */
     private String content;
     /**
-     * 消息类型：1-文本，2-图片等
+     * 消息类型：1-文本，2-文件等
      */
     private Integer msgType;
     /**
-     * 1=sent,2=delivered,3=read,4=finished
+     * 1=sent,2=read
      */
     private Integer status;
     /**
@@ -45,7 +51,11 @@ public class MessagePrivateChat {
      */
     private Long sendTime;
     /**
-     * 推送成功时间
+     *
      */
-    private Long pushTime;
+    private Date createTime;
+    /**
+     *
+     */
+    private Date updateTime;
 }

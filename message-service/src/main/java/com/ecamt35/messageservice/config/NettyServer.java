@@ -1,6 +1,10 @@
 package com.ecamt35.messageservice.config;
 
+import cn.hutool.core.lang.Snowflake;
+import com.ecamt35.messageservice.service.MessagePrivateChatService;
+import com.ecamt35.messageservice.websocket.MessageService;
 import com.ecamt35.messageservice.websocket.WebSocketFrameHandler;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -12,9 +16,8 @@ import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
+import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -36,12 +39,18 @@ public class NettyServer {
     @Value("${netty.websocket.idle-timeout:60}")
     private int idleTimeout;
 
+    @Resource
+    private MessageService messageService;
+    @Resource
+    private Snowflake snowflake;
+    @Resource
+    private MessagePrivateChatService messagePrivateChatService;
+    @Resource
+    private ObjectMapper objectMapper;
+
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
     private Channel serverChannel;
-
-    @Autowired
-    private ObjectProvider<WebSocketFrameHandler> webSocketFrameHandlerProvider;
 
     /**
      * 初始化 Netty 服务器
@@ -76,8 +85,15 @@ public class NettyServer {
                             pipeline.addLast(new IdleStateHandler(
                                     idleTimeout, 0, 0, TimeUnit.SECONDS
                             ));
-                            // WebSocket 消息处理器（原型 Bean）
-                            pipeline.addLast(webSocketFrameHandlerProvider.getObject());
+                            // WebSocket 消息处理器
+                            pipeline.addLast(
+                                    new WebSocketFrameHandler(
+                                            messageService,
+                                            snowflake,
+                                            messagePrivateChatService,
+                                            objectMapper
+                                    )
+                            );
                         }
                     });
 

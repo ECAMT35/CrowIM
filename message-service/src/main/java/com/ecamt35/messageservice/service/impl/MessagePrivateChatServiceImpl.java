@@ -7,7 +7,7 @@ import com.ecamt35.messageservice.service.MessagePrivateChatService;
 import jakarta.annotation.Resource;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
+import java.util.Set;
 
 /**
  * (MessagePrivateChat)表服务实现类
@@ -22,23 +22,12 @@ public class MessagePrivateChatServiceImpl extends ServiceImpl<MessagePrivateCha
     private MessagePrivateChatMapper messagePrivateChatMapper;
 
     @Override
-    public int updateStatusDelivered(Long messagePrivateChatId, Long receiverId) {
-        Long pushTime = System.currentTimeMillis();
-        return messagePrivateChatMapper.updateStatusDelivered(messagePrivateChatId, receiverId, pushTime);
+    public int updateStatusToReadBatch(Set<Long> messagePrivateChatIds, Long userId) {
+        return messagePrivateChatMapper.updateStatusToReadBatch(messagePrivateChatIds, userId);
     }
 
     @Override
-    public int updateStatusRead(Long messagePrivateChatId, Long receiverId) {
-        return messagePrivateChatMapper.updateStatusRead(messagePrivateChatId, receiverId);
-    }
-
-    @Override
-    public int updateStatusFinished(Long messagePrivateChatId, Long senderId) {
-        return messagePrivateChatMapper.updateStatusFinished(messagePrivateChatId, senderId);
-    }
-
-    @Override
-    public List<Long> getReadByReceiverId(Long senderId, Long receiverId) {
-        return messagePrivateChatMapper.getReadByReceiverId(senderId, receiverId);
+    public MessagePrivateChat findByClientMsgId(Long msgId, Long senderId) {
+        return messagePrivateChatMapper.findByClientMsgId(msgId, senderId);
     }
 }

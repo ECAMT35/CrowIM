@@ -3,17 +3,15 @@ package com.ecamt35.messageservice.constant;
 public class PacketTypeConstant {
 
     // from client
-    public final static int CLIENT_REQUEST_SENT = 1;
-    public final static int CLIENT_ACK_RECEIVED = 2;
-    public final static int CLIENT_ACK_READ = 3;
-    public final static int CLIENT_REQUEST_READ_LIST = 4;
-    public final static int CLIENT_REQUEST_FINISHED = 5;
+    public final static int CLIENT_REQUEST_SENT = 100;
+    public final static int CLIENT_ACK_READ = 101;
 
     // to client
-    public final static int SERVER_REQUEST_SENT = 6;
-    public final static int SERVER_ACK_SENT = 7;
-    public final static int SERVER_ACK_RECEIVED = 8;
-    public final static int SERVER_ACK_READ = 9;
-    public final static int SERVER_ACK_READ_LIST = 10;
-    public final static int SERVER_ACK_FINISHED = 11;
+    public final static int SERVER_REQUEST_SENT = 200;
+    public final static int SERVER_ACK_SENT = 201;
+    public final static int SERVER_ACK_READ = 202;
+
+    // others
+    public final static int INVALID_MESSAGE_FORMAT = 400;
+    public final static int INSUFFICIENT_PERMISSIONS = 401;
 }
