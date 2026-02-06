@@ -34,7 +34,7 @@
     </scm>
     <properties>
         <java.version>21</java.version>
-        <mysql-connector-j.version>9.6.0</mysql-connector-j.version>
+        <mysql-connector-j.version>9.5.0</mysql-connector-j.version>
         <lombok.version>1.18.42</lombok.version>
         <mybatis-plus-spring-boot3-starter.version>3.5.16</mybatis-plus-spring-boot3-starter.version>
 
@@ -47,9 +47,8 @@
         <redisson-spring-boot-starter.version>3.52.0</redisson-spring-boot-starter.version>
         <spring-boot-starter-amqp.version>4.0.2</spring-boot-starter-amqp.version>
 
-        <spring-boot-starter-freemarker.version>3.5.10</spring-boot-starter-freemarker.version>
+        <spring-boot-starter-freemarker.version>4.0.2</spring-boot-starter-freemarker.version>
         <spring-boot-starter-mail.version>4.0.2</spring-boot-starter-mail.version>
-        <jackson-dataformat-xml.version>2.20.1</jackson-dataformat-xml.version>
 
         <!--            <nacos-discovery.version>2023.0.1.2</nacos-discovery.version>-->
         <!--            <dubbo.version>3.3.0</dubbo.version>-->
@@ -137,12 +136,6 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-freemarker</artifactId>
                 <version>${spring-boot-starter-freemarker.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>com.fasterxml.jackson.dataformat</groupId>
-                <artifactId>jackson-dataformat-xml</artifactId>
-                <version>${jackson-dataformat-xml.version}</version>
             </dependency>
 
             <!--                    &lt;!&ndash; Nacos Spring Cloud discovery&ndash;&gt;-->
