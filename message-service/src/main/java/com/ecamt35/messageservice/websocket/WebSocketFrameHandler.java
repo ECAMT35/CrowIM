@@ -255,7 +255,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         // DB持久化
         long id = snowflake.nextId();
         MessagePrivateChat messagePrivateChat = new MessagePrivateChat(
-                id, clientMsgId, senderId, receiverId, content, messageType, 1, sendTime, null, null
+                id, clientMsgId, senderId, receiverId, content, messageType, 1, sendTime, null, null, null
         );
 
         boolean isFirstTimeSave = false;

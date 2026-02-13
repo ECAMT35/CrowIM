@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.0.2</version>
+        <version>3.5.10</version>
     </parent>
 
     <modules>
@@ -44,11 +44,11 @@
 
         <knife4j>4.5.0</knife4j>
         <hutool-core.version>5.8.43</hutool-core.version>
-        <redisson-spring-boot-starter.version>3.52.0</redisson-spring-boot-starter.version>
-        <spring-boot-starter-amqp.version>4.0.2</spring-boot-starter-amqp.version>
+        <redisson-spring-boot-starter.version>4.0.0</redisson-spring-boot-starter.version>
+        <spring-boot-starter-amqp.version>3.5.10</spring-boot-starter-amqp.version>
 
-        <spring-boot-starter-freemarker.version>4.0.2</spring-boot-starter-freemarker.version>
-        <spring-boot-starter-mail.version>4.0.2</spring-boot-starter-mail.version>
+        <spring-boot-starter-freemarker.version>3.5.10</spring-boot-starter-freemarker.version>
+        <spring-boot-starter-mail.version>3.5.10</spring-boot-starter-mail.version>
 
         <!--            <nacos-discovery.version>2023.0.1.2</nacos-discovery.version>-->
         <!--            <dubbo.version>3.3.0</dubbo.version>-->
@@ -58,11 +58,11 @@
 
         <dependencies>
 
-            <dependency>
-                <groupId>com.mysql</groupId>
-                <artifactId>mysql-connector-j</artifactId>
-                <version>${mysql-connector-j.version}</version>
-            </dependency>
+            <!--            <dependency>-->
+            <!--                <groupId>com.mysql</groupId>-->
+            <!--                <artifactId>mysql-connector-j</artifactId>-->
+            <!--                <version>${mysql-connector-j.version}</version>-->
+            <!--            </dependency>-->
 
             <dependency>
                 <groupId>org.projectlombok</groupId>

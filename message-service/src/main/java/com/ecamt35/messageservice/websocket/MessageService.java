@@ -14,12 +14,12 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
 import static com.ecamt35.messageservice.websocket.UserChannelRegistry.USER_ONLINE_STATUS_KEY;
 
 @Slf4j
-@Service
+@Component
 @RequiredArgsConstructor
 public class MessageService {
 

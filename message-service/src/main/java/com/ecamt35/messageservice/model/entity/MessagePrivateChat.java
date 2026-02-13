@@ -58,4 +58,8 @@ public class MessagePrivateChat {
      *
      */
     private Date updateTime;
+    /**
+     *
+     */
+    private Date deleted;
 }

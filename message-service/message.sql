@@ -11,6 +11,7 @@ create table message_private_chat
     send_time     bigint comment '服务端生成的发送时间戳',
     create_time   datetime   not null default current_timestamp,
     update_time   datetime   not null default current_timestamp on update current_timestamp,
+    deleted       tinyint    not null default 0 COMMENT '逻辑删除: 0-未删除，1-已删除',
 
     unique key uk_client_msg_id (client_msg_id),
     key idx_receiver_status (receiver_id, sender_id, status)
