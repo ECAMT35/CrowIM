@@ -1,6 +1,5 @@
 package com.ecamt35.messageservice.websocket;
 
-import com.ecamt35.messageservice.config.NodeName;
 import com.ecamt35.messageservice.constant.PacketTypeConstant;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
 import com.ecamt35.messageservice.model.vo.PushVo;
@@ -13,6 +12,7 @@ import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -34,6 +34,9 @@ public class MessageService {
 
     @Resource
     private ObjectMapper objectMapper;
+
+    @Value("${node-name}")
+    private String nodeName;
 
     /**
      * 注册用户与通道绑定
@@ -82,7 +85,7 @@ public class MessageService {
         }
 
         Channel channel;
-        if (NodeName.NODE_NAME.equals(nodeKey)) {
+        if (nodeName.equals(nodeKey)) {
             // 尝试获取Channel
             channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
             if (channel != null && channel.isActive() && channel.isWritable()) {

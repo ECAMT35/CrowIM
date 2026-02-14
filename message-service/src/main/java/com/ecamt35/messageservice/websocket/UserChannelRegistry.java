@@ -1,12 +1,12 @@
 package com.ecamt35.messageservice.websocket;
 
-import com.ecamt35.messageservice.config.NodeName;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.util.AttributeKey;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -25,6 +25,9 @@ public class UserChannelRegistry {
 
     @Resource
     private RedisTemplate<String, String> redisTemplate;
+
+    @Value("${node-name}")
+    private String nodeName;
 
     public static final String USER_ONLINE_STATUS_KEY = "user:online:status";
 
@@ -56,7 +59,7 @@ public class UserChannelRegistry {
             channel.attr(REGISTERED_KEY).set(true);
             userChannels.put(userId, channel);
             channelMap.put(channel.id(), channel);
-            redisTemplate.opsForHash().put(USER_ONLINE_STATUS_KEY, String.valueOf(userId), NodeName.NODE_NAME);
+            redisTemplate.opsForHash().put(USER_ONLINE_STATUS_KEY, String.valueOf(userId), nodeName);
 
             log.info("User {} registered successfully", userId);
         }
@@ -123,7 +126,5 @@ public class UserChannelRegistry {
         // 清空所有容器
         userChannels.clear();
         channelMap.clear();
-        // 修复销毁方法，清理Redis当前节点的在线用户
-        // todo
     }
 }

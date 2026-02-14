@@ -15,7 +15,7 @@ public class MessagePushListener {
     @Resource
     private MessageService messageService;
 
-    @RabbitListener(queues = RabbitMQConstant.WEBSOCKET_MESSAGE_QUEUE)
+    @RabbitListener(queues = "#{rabbitMQConstant.getWebsocketMessageQueue()}")
     public void pushMessageOnline(SendMessageBo sendMessageBo) {
         messageService.sendMessageToUser(sendMessageBo);
     }

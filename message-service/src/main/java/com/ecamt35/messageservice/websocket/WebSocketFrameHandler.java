@@ -188,6 +188,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         ChannelId channelId = ctx.channel().id();
         Thread.ofVirtual()
                 .start(() -> {
+                    log.info("Handling message in thread: {}", Thread.currentThread());
                     dispatchMessageTask(channelId, commonPacketDto);
                 });
     }

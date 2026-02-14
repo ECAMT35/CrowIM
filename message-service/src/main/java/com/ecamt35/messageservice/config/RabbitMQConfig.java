@@ -10,16 +10,25 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RabbitMQConfig {
 
+    private final RabbitMQConstant rabbitMQConstant;
+    public RabbitMQConfig(RabbitMQConstant rabbitMQConstant) {
+        this.rabbitMQConstant = rabbitMQConstant;
+    }
+
     @Bean
     DirectExchange websocketMessageExchange() {
-        return new DirectExchange(RabbitMQConstant.WEBSOCKET_MESSAGE_EXCHANGE, true, false);
+        return new DirectExchange(
+                rabbitMQConstant.getWebsocketMessageExchange(),
+                true,   // durable
+                false   // autoDelete
+        );
     }
 
     @Bean
     Queue websocketMessageQueue() {
-        return QueueBuilder.durable(RabbitMQConstant.WEBSOCKET_MESSAGE_QUEUE)
-                .deadLetterExchange(RabbitMQConstant.DEAD_WEBSOCKET_MESSAGE_EXCHANGE)
-                .deadLetterRoutingKey(RabbitMQConstant.DEAD_WEBSOCKET_MESSAGE_ROUTING_KEY)
+        return QueueBuilder.durable(rabbitMQConstant.getWebsocketMessageQueue())
+                .deadLetterExchange(rabbitMQConstant.getDeadWebsocketMessageExchange())
+                .deadLetterRoutingKey(rabbitMQConstant.getDeadWebsocketMessageRoutingKey())
                 .build();
     }
 
@@ -27,26 +36,31 @@ public class RabbitMQConfig {
     Binding websocketBinding() {
         return BindingBuilder.bind(websocketMessageQueue())
                 .to(websocketMessageExchange())
-                .with(RabbitMQConstant.WEBSOCKET_MESSAGE_KEY);
+                .with(rabbitMQConstant.getWebsocketMessageKey());
     }
 
 
     @Bean
     DirectExchange deadWebsocketExchange() {
-        return new DirectExchange(RabbitMQConstant.DEAD_WEBSOCKET_MESSAGE_EXCHANGE, true, false);
+        return new DirectExchange(
+                rabbitMQConstant.getDeadWebsocketMessageExchange(),
+                true,
+                false
+        );
     }
 
     @Bean
     Queue deadWebsocketQueue() {
-        return new Queue(RabbitMQConstant.DEAD_WEBSOCKET_MESSAGE_QUEUE, true);
+        return new Queue(rabbitMQConstant.getDeadWebsocketMessageQueue(), true);
     }
 
     @Bean
     Binding deadWebsocketBinding() {
         return BindingBuilder.bind(deadWebsocketQueue())
                 .to(deadWebsocketExchange())
-                .with(RabbitMQConstant.DEAD_WEBSOCKET_MESSAGE_ROUTING_KEY);
+                .with(rabbitMQConstant.getDeadWebsocketMessageRoutingKey());
     }
+
 
     // 消息转换器
     @Bean
