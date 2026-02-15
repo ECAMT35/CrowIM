@@ -1,6 +1,7 @@
 package com.ecamt35.userservice.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.ecamt35.userservice.model.dto.SignInDto;
 import com.ecamt35.userservice.model.dto.SignUpDto;
 import com.ecamt35.userservice.model.entity.User;
 import com.ecamt35.userservice.model.vo.AccountSessionUserVo;
@@ -18,13 +19,13 @@ import java.util.Map;
 public interface UserService extends IService<User> {
     void signUp(SignUpDto signupDto) throws NoSuchAlgorithmException;
 
-    Integer signInByUserName(String username, String password) throws NoSuchAlgorithmException;
+    Long signIn(SignInDto signInDto) throws NoSuchAlgorithmException;
 
-    Integer signInByEmail(String email, String password) throws NoSuchAlgorithmException;
+    void logout(String deviceId);
 
-    List<String> getRoleNameList(Integer userId) throws InterruptedException;
+    List<String> getRoleNameList(Long userId) throws InterruptedException;
 
     Map<String, String> getRoleMap() throws InterruptedException;
 
-    AccountSessionUserVo getAccountSessionUser(Integer userId);
+    AccountSessionUserVo getAccountSessionUser(Long userId);
 }

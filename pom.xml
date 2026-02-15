@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <parent>
@@ -43,6 +43,7 @@
         <commons-pool2>2.12.1</commons-pool2>
 
         <knife4j>4.5.0</knife4j>
+        <springdoc-openapi-starter-webmvc-ui.version>2.8.15</springdoc-openapi-starter-webmvc-ui.version>
         <hutool-core.version>5.8.43</hutool-core.version>
         <redisson-spring-boot-starter.version>4.0.0</redisson-spring-boot-starter.version>
         <spring-boot-starter-amqp.version>3.5.10</spring-boot-starter-amqp.version>
@@ -136,6 +137,12 @@
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-starter-freemarker</artifactId>
                 <version>${spring-boot-starter-freemarker.version}</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.springdoc</groupId>
+                <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+                <version>${springdoc-openapi-starter-webmvc-ui.version}</version>
             </dependency>
 
             <!--                    &lt;!&ndash; Nacos Spring Cloud discovery&ndash;&gt;-->

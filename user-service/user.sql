@@ -1,21 +1,27 @@
+-- 用户表
 create table user
 (
-    id          int                not null auto_increment primary key,
-    user_name   varchar(24) unique not null,
-    email       varchar(64) unique not null,
-    password    varchar(96)        not null,
-    role_id     tinyint default 1,
-    create_time datetime,
-    update_time datetime,
-    is_deleted  tinyint default 0 comment '逻辑删除, 1为是，0为否'
+    id          bigint unsigned  not null primary key comment '雪花算法生成主键',
+    user_name   varchar(32)      not null comment '用户名',
+    email       varchar(128)     not null comment '邮箱',
+    password    varchar(96)      not null comment '密码',
+    role_id     tinyint unsigned not null default 1 comment '角色id',
+    create_time datetime         not null default current_timestamp,
+    update_time datetime         not null default current_timestamp on update current_timestamp,
+    deleted     tinyint unsigned not null default 0 comment '逻辑删除: 0-未删除，1-已删除',
+
+    unique key uk_user_name (user_name),
+    unique key uk_email (email)
 );
 
-create table user_role
+-- 角色表
+create table role
 (
-    id          tinyint     not null auto_increment primary key,
-    role_name   varchar(16) not null,
-    create_time datetime,
-    update_time datetime
+    id          tinyint unsigned not null auto_increment primary key,
+    role_name   varchar(32)      not null comment '角色名称',
+    create_time datetime         not null default current_timestamp,
+    update_time datetime         not null default current_timestamp on update current_timestamp,
+    deleted     tinyint unsigned not null default 0 comment '逻辑删除: 0-未删除，1-已删除'
 );
 
 -- 身份公钥表（IK）

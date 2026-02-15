@@ -24,6 +24,6 @@ public interface UserMapper extends BaseMapper<User> {
     @Select("select id, password from user where email = #{email}")
     UserLiteBo signInByEmail(String email);
 
-    @Select("select id, role_name as roleName from user_role")
+    @Select("select id, role_name as roleName from role")
     List<RoleBo> getAllRoles();
 }

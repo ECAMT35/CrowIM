@@ -36,7 +36,10 @@ public class UserController {
             return Result.fail("密码不能为空");
         }
 
-        Integer userId;
+        if (signInDto.getDeviceId() == null || signInDto.getDeviceId().isEmpty()) {
+            return Result.fail("deviceId不能为空");
+        }
+
         if ((signInDto.getUserName() == null || signInDto.getUserName().isEmpty()) &&
                 (signInDto.getEmail() == null || signInDto.getEmail().isEmpty())) {
             return Result.fail("用户名或邮箱不能同时为空");
@@ -45,26 +48,17 @@ public class UserController {
             return Result.fail("用户名和邮箱不能同时存在");
         }
 
-        // 只有用户名或者邮箱其中一个为空或者不为空
-        if (signInDto.getUserName() == null || signInDto.getUserName().isEmpty()) {
-            userId = userService.signInByEmail(signInDto.getEmail(), signInDto.getPassword());
-        } else {
-            userId = userService.signInByUserName(signInDto.getUserName(), signInDto.getPassword());
-
-        }
-
+        Long userId = userService.signIn(signInDto);
         if (userId == null) {
             return Result.fail("用户名或密码错误");
         }
 
-        StpUtil.login(userId, signInDto.isRememberMe());
         return Result.success(userId);
     }
 
-    @Operation(summary = "用户登出")
-    @GetMapping("/logout")
-    public Result logout() {
-        StpUtil.logout();
+    @PostMapping("/logout")
+    public Result logout(@RequestParam String deviceId) {
+        userService.logout(deviceId);
         return Result.success("登出成功");
     }
 
@@ -95,7 +89,7 @@ public class UserController {
     @Operation(summary = "当前用户信息")
     @GetMapping("/me")
     public Result getAccountSessionUserVo() {
-        int userId = StpUtil.getLoginIdAsInt();
+        Long userId = StpUtil.getLoginIdAsLong();
         AccountSessionUserVo accountSessionUserVo = userService.getAccountSessionUser(userId);
         return Result.success(accountSessionUserVo);
     }

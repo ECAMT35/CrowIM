@@ -1,5 +1,7 @@
 package com.ecamt35.messageservice.model.entity;
 
+import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -61,5 +63,7 @@ public class MessagePrivateChat {
     /**
      *
      */
-    private Date deleted;
+    @TableLogic
+    @TableField(value = "deleted")
+    private Integer deleted;
 }
