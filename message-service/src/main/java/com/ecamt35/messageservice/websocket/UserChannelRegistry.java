@@ -36,8 +36,8 @@ public class UserChannelRegistry {
     public static final String LOCK_USER_DEVICE_KEY_PREFIX = "lock:user:device:";
 
     // key 用 userId:deviceId，避免不同用户 deviceId 冲突
-    public final ConcurrentMap<String, Channel> deviceChannels = new ConcurrentHashMap<>();
-    public final ConcurrentMap<ChannelId, Channel> channelMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, Channel> deviceChannels = new ConcurrentHashMap<>();
+    private final ConcurrentMap<ChannelId, Channel> channelMap = new ConcurrentHashMap<>();
 
     @Resource
     private RedisTemplate<String, String> redisTemplate;
@@ -49,6 +49,8 @@ public class UserChannelRegistry {
     private OfflineConnectConstant offlineConnectConstant;
     @Value("${node-name}")
     private String nodeName;
+    @Value("${device-session-timeout}")
+    private int deviceSessionTimeout;
 
 
     /**
@@ -129,7 +131,7 @@ public class UserChannelRegistry {
             hashData.put("ts", String.valueOf(System.currentTimeMillis()));
 
             redisTemplate.opsForHash().putAll(redisKey, hashData);
-            redisTemplate.expire(redisKey, 10, TimeUnit.MINUTES);
+            redisTemplate.expire(redisKey, deviceSessionTimeout, TimeUnit.SECONDS);
 
             log.info("User {} device {} registered on node {}, sessionId={}", userId, deviceId, nodeName, newSessionId);
 
@@ -243,18 +245,18 @@ public class UserChannelRegistry {
         return channel;
     }
 
-    @PreDestroy
-    public void destroy() {
-        // 清空所有容器
-        deviceChannels.clear();
-        channelMap.clear();
-    }
-
     public String localKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
     }
 
     public String wsOnlineKey(Long userId, String deviceId) {
         return WS_ONLINE_KEY_PREFIX + userId + ":" + deviceId;
+    }
+
+    @PreDestroy
+    public void destroy() {
+        // 清空所有容器
+        deviceChannels.clear();
+        channelMap.clear();
     }
 }

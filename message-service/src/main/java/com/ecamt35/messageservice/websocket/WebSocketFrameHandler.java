@@ -113,8 +113,6 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             return;
         }
 
-        System.out.println(userChannelRegistry.deviceChannels.size());
-        System.out.println(userChannelRegistry.channelMap.size());
         String message = ((TextWebSocketFrame) frame).text();
         Boolean isRegistered = ctx.channel().attr(UserChannelRegistry.REGISTERED_KEY).get();
 
