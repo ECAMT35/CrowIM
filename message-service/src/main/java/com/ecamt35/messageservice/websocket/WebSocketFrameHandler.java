@@ -30,9 +30,7 @@ import java.util.Set;
 public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocketFrame> {
 
     //客户端注册命令前缀，格式为 "REGISTER:<userId>"。
-    private static final String REGISTER_CMD = "REGISTER:";
     private static final String REGISTER_SUCCESS = "REGISTER_SUCCESS";
-    private static final String REGISTRATION_REQUIRED = "ERROR:Please register first by sending REGISTER:<your-user-id>";
     private static final String WELCOME_MESSAGE = "Welcome! Please register by sending: REGISTER:<your-user-id>";
     // 所有依赖改为构造器注入
     private final MessageService messageService;
@@ -115,6 +113,8 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             return;
         }
 
+        System.out.println(userChannelRegistry.deviceChannels.size());
+        System.out.println(userChannelRegistry.channelMap.size());
         String message = ((TextWebSocketFrame) frame).text();
         Boolean isRegistered = ctx.channel().attr(UserChannelRegistry.REGISTERED_KEY).get();
 
@@ -151,6 +151,18 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         Map<String, Object> data = commonPacketDto.getData();
         String deviceId = Convert.toStr(data.get("deviceId"));
         Long userId = Convert.toLong(data.get("userId"));
+
+        if (userId == null || deviceId == null || deviceId.isBlank()) {
+            PushVo errorVo = new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, message);
+            try {
+                String pushVo = objectMapper.writeValueAsString(errorVo);
+                ctx.writeAndFlush(new TextWebSocketFrame(pushVo));
+            } catch (JsonProcessingException e) {
+                log.info("Invalid message format: {}", message, e);
+            }
+            ctx.close();
+            return;
+        }
 
         userChannelRegistry.registerUser(userId, deviceId, ctx.channel());
         ctx.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS));
@@ -288,7 +300,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         // Msg:N, MQ消息推送
         if (isFirstTimeSave) {
             SendMessageBo sendMessageBo = new SendMessageBo(
-                    receiverId, content, chatType, messageType, senderId, id, sendTime, deviceId
+                    receiverId, content, chatType, messageType, senderId, id, sendTime, null
             );
             messageService.sendMessageToUser(sendMessageBo);
         }

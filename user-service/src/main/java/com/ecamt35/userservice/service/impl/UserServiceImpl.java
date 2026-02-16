@@ -27,7 +27,7 @@ import com.ecamt35.userservice.util.RedisStrategyComponent;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.BeanUtils;
-import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -46,7 +46,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     private final UserMapper userMapper;
     private final RedisStrategyComponent redisStrategyComponent;
-    private final StringRedisTemplate stringRedisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final UserIdentityKeyService userIdentityKeyService;
     private final UserOneTimePreKeyService userOneTimePreKeyService;
     private final UserSignedPreKeyService userSignedPreKeyService;
@@ -56,7 +56,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
     public UserServiceImpl(UserMapper userMapper,
                            RedisStrategyComponent redisStrategyComponent,
-                           StringRedisTemplate stringRedisTemplate,
+                           RedisTemplate<String, Object> redisTemplate,
                            UserIdentityKeyService userIdentityKeyService,
                            UserOneTimePreKeyService userOneTimePreKeyService,
                            UserSignedPreKeyService userSignedPreKeyService,
@@ -64,7 +64,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
                            RedissonClient redissonClient) {
         this.userMapper = userMapper;
         this.redisStrategyComponent = redisStrategyComponent;
-        this.stringRedisTemplate = stringRedisTemplate;
+        this.redisTemplate = redisTemplate;
         this.userIdentityKeyService = userIdentityKeyService;
         this.userOneTimePreKeyService = userOneTimePreKeyService;
         this.userSignedPreKeyService = userSignedPreKeyService;
@@ -90,7 +90,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         // 验证码
         String captcha = signupDto.getCaptcha();
         String key = CaptchaCacheConstant.SIGNUP_MAIL_PREFIX + email;
-        String code = stringRedisTemplate.opsForValue().get(key);
+        String code = Objects.requireNonNull(redisTemplate.opsForValue().get(key)).toString();
         if (!captcha.equals(code)) {
             throw new BusinessException(BusinessErrorCodeEnum.SIGNUP_CAPTCHA_ERROR);
         }
@@ -194,7 +194,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
             // 获取新 token，更新业务 Redis
             String tokenValue = StpUtil.getTokenValue();
             String key = UserConstant.USER_DEVICES + userId;
-            stringRedisTemplate.opsForHash().put(key, deviceId, tokenValue);
+            redisTemplate.opsForHash().put(key, deviceId, tokenValue);
 
             return userId;
 
@@ -314,7 +314,7 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     private void logoutDevice(Long userId, String tokenValue, String deviceId) {
         StpUtil.logoutByTokenValue(tokenValue);
         String key = UserConstant.USER_DEVICES + userId;
-        stringRedisTemplate.opsForHash().delete(key, deviceId);
+        redisTemplate.opsForHash().delete(key, deviceId);
     }
 
 

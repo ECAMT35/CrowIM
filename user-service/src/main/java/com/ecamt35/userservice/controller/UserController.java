@@ -32,19 +32,19 @@ public class UserController {
     @PostMapping("/signin")
     public Result signIn(@RequestBody SignInDto signInDto) throws NoSuchAlgorithmException {
 
-        if (signInDto.getPassword() == null || signInDto.getPassword().isEmpty()) {
+        if (signInDto.getPassword() == null || signInDto.getPassword().isBlank()) {
             return Result.fail("密码不能为空");
         }
 
-        if (signInDto.getDeviceId() == null || signInDto.getDeviceId().isEmpty()) {
+        if (signInDto.getDeviceId() == null || signInDto.getDeviceId().isBlank()) {
             return Result.fail("deviceId不能为空");
         }
 
-        if ((signInDto.getUserName() == null || signInDto.getUserName().isEmpty()) &&
+        if ((signInDto.getUserName() == null || signInDto.getUserName().isBlank()) &&
                 (signInDto.getEmail() == null || signInDto.getEmail().isEmpty())) {
             return Result.fail("用户名或邮箱不能同时为空");
-        } else if (signInDto.getUserName() != null && !signInDto.getUserName().isEmpty() &&
-                signInDto.getEmail() != null && !signInDto.getEmail().isEmpty()) {
+        } else if (signInDto.getUserName() != null && !signInDto.getUserName().isBlank() &&
+                signInDto.getEmail() != null && !signInDto.getEmail().isBlank()) {
             return Result.fail("用户名和邮箱不能同时存在");
         }
 
@@ -66,11 +66,11 @@ public class UserController {
     @Operation(summary = "用户注册")
     public Result signUp(@RequestBody SignUpDto signUpDto) throws NoSuchAlgorithmException {
 
-        if (signUpDto.getUserName() == null || signUpDto.getUserName().isEmpty()) {
+        if (signUpDto.getUserName() == null || signUpDto.getUserName().isBlank()) {
             return Result.fail("用户名不能为空");
         }
 
-        if (signUpDto.getPassword() == null || signUpDto.getPassword().isEmpty()) {
+        if (signUpDto.getPassword() == null || signUpDto.getPassword().isBlank()) {
             return Result.fail("密码不能为空");
         }
 
@@ -78,7 +78,7 @@ public class UserController {
             return Result.fail("用户名或密码长度不合法");
         }
 
-        if (signUpDto.getEmail() == null || signUpDto.getEmail().isEmpty()) {
+        if (signUpDto.getEmail() == null || signUpDto.getEmail().isBlank()) {
             return Result.fail("邮箱不能为空");
         }
 

@@ -12,4 +12,5 @@ public class OfflineNotificationBo {
     private String deviceId;       // 设备ID
     private String targetNode;     // 需下线的节点名称
     private String reason;         // 下线原因
+    private String sessionId;      // 旧连接会话标识
 }
