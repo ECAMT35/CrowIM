@@ -7,7 +7,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -15,8 +14,6 @@ import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
-
-import static com.ecamt35.messageservice.websocket.UserChannelRegistry.USER_ONLINE_STATUS_KEY;
 
 @Slf4j
 @Component
@@ -37,13 +34,6 @@ public class MessageService {
 
     @Value("${node-name}")
     private String nodeName;
-
-    /**
-     * 注册用户与通道绑定
-     */
-    public void registerUser(long userId, Channel channel) {
-        userChannelRegistry.registerUser(userId, channel);
-    }
 
     /**
      * 注销用户并移除通道
@@ -74,36 +64,40 @@ public class MessageService {
             throw new RuntimeException(e);
         }
 
-        // 重新检查节点是否为本机
-        String nodeKey = (String) redisTemplate.opsForHash().get(
-                USER_ONLINE_STATUS_KEY,
-                String.valueOf(sendMessageBo.getReceiverId())
-        );
-        if (nodeKey == null || nodeKey.isBlank()) {
-            log.info("User {} is offline, skip forward message", sendMessageBo.getReceiverId());
-            return;
-        }
+        // todo 获取所有登录设备，查询是否在线,在线的就推送
 
-        Channel channel;
-        if (nodeName.equals(nodeKey)) {
-            // 尝试获取Channel
-            channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
-            if (channel != null && channel.isActive() && channel.isWritable()) {
-                channel.eventLoop().execute(() -> channel.writeAndFlush(new TextWebSocketFrame(pushVoJson)));
-            }
-        } else {
-            // 转发到目标节点
-            StringBuilder sb = new StringBuilder();
-            sb.append("websocket-message-");
-            sb.append(nodeKey);
-            String exchange = sb + ".direct";
-            String key = sb.toString();
-            rabbitTemplate.convertAndSend(
-                    exchange,
-                    key,
-                    sendMessageBo
-            );
-        }
+        // todo 然后查询这些设备是否在线，在线的设备就直接推送消息
+
+        // 重新检查节点是否为本机
+//        String nodeKey = (String) redisTemplate.opsForHash().get(
+//                USER_ONLINE_STATUS_KEY,
+//                String.valueOf(sendMessageBo.getReceiverId())
+//        );
+//        if (nodeKey == null || nodeKey.isBlank()) {
+//            log.info("User {} is offline, skip forward message", sendMessageBo.getReceiverId());
+//            return;
+//        }
+//
+//        Channel channel;
+//        if (nodeName.equals(nodeKey)) {
+//            // 尝试获取Channel
+//            channel = userChannelRegistry.getRegisteredChannel(sendMessageBo.getReceiverId());
+//            if (channel != null && channel.isActive() && channel.isWritable()) {
+//                channel.eventLoop().execute(() -> channel.writeAndFlush(new TextWebSocketFrame(pushVoJson)));
+//            }
+//        } else {
+//            // 转发到目标节点
+//            StringBuilder sb = new StringBuilder();
+//            sb.append("websocket-message-");
+//            sb.append(nodeKey);
+//            String exchange = sb + ".direct";
+//            String key = sb.toString();
+//            rabbitTemplate.convertAndSend(
+//                    exchange,
+//                    key,
+//                    sendMessageBo
+//            );
+//        }
     }
 
     /**

@@ -29,29 +29,30 @@ import java.util.Set;
 @Slf4j
 public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocketFrame> {
 
-    // 所有依赖改为构造器注入
-    private final MessageService messageService;
-    private final Snowflake snowflake;
-    private final MessagePrivateChatService messagePrivateChatService;
-    private final ObjectMapper objectMapper;
-
-    // 构造器注入，在初始化 Pipeline 时传入 Bean
-    public WebSocketFrameHandler(MessageService messageService,
-                                 Snowflake snowflake,
-                                 MessagePrivateChatService messagePrivateChatService,
-                                 ObjectMapper objectMapper) {
-        this.messageService = messageService;
-        this.snowflake = snowflake;
-        this.messagePrivateChatService = messagePrivateChatService;
-        this.objectMapper = objectMapper;
-    }
-
     //客户端注册命令前缀，格式为 "REGISTER:<userId>"。
     private static final String REGISTER_CMD = "REGISTER:";
     private static final String REGISTER_SUCCESS = "REGISTER_SUCCESS";
     private static final String REGISTRATION_REQUIRED = "ERROR:Please register first by sending REGISTER:<your-user-id>";
     private static final String WELCOME_MESSAGE = "Welcome! Please register by sending: REGISTER:<your-user-id>";
+    // 所有依赖改为构造器注入
+    private final MessageService messageService;
+    private final Snowflake snowflake;
+    private final MessagePrivateChatService messagePrivateChatService;
+    private final ObjectMapper objectMapper;
+    private final UserChannelRegistry userChannelRegistry;
 
+    // 构造器注入，在初始化 Pipeline 时传入 Bean
+    public WebSocketFrameHandler(MessageService messageService,
+                                 Snowflake snowflake,
+                                 MessagePrivateChatService messagePrivateChatService,
+                                 ObjectMapper objectMapper,
+                                 UserChannelRegistry userChannelRegistry) {
+        this.messageService = messageService;
+        this.snowflake = snowflake;
+        this.messagePrivateChatService = messagePrivateChatService;
+        this.objectMapper = objectMapper;
+        this.userChannelRegistry = userChannelRegistry;
+    }
 
     /**
      * 当新连接建立时触发，发送欢迎信息并初始化连接状态。
@@ -126,28 +127,34 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
 
     /**
      * 处理用户注册请求。
-     * 解析 "REGISTER:<userId>" 格式的消息，验证用户 ID 并完成注册。
      *
      * @param ctx     ChannelHandlerContext，连接上下文
      * @param message 接收到的消息内容
      */
     private void handleRegistration(ChannelHandlerContext ctx, String message) {
-        if (message.startsWith(REGISTER_CMD)) {
+        CommonPacketDto commonPacketDto;
+
+        try {
+            commonPacketDto = objectMapper.readValue(message, CommonPacketDto.class);
+        } catch (JsonProcessingException e) {
+            log.info("Invalid JSON format: {}", message, e);
+            PushVo errorVo = new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, message);
             try {
-                long userId = Long.parseLong(message.substring(REGISTER_CMD.length()).trim());
-                messageService.registerUser(userId, ctx.channel()); // 调用业务服务注册用户
-                ctx.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS)); // 返回注册成功
-
-                // todo
-                // 登陆后获取一次status=sent的消息
-
-            } catch (NumberFormatException e) {
-                log.warn("Invalid user ID format: {}", message);
-                ctx.writeAndFlush(new TextWebSocketFrame("ERROR:Invalid user ID format"));
+                String pushVo = objectMapper.writeValueAsString(errorVo);
+                ctx.writeAndFlush(new TextWebSocketFrame(pushVo));
+            } catch (JsonProcessingException ex) {
+                log.info("Invalid message format: {}", message, ex);
             }
-        } else {
-            ctx.writeAndFlush(new TextWebSocketFrame(REGISTRATION_REQUIRED)); // 提示用户先注册
+            return;
         }
+
+        Map<String, Object> data = commonPacketDto.getData();
+        String deviceId = Convert.toStr(data.get("deviceId"));
+        Long userId = Convert.toLong(data.get("userId"));
+
+        userChannelRegistry.registerUser(userId, deviceId, ctx.channel());
+        ctx.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS));
+
     }
 
     /**
@@ -230,6 +237,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         Integer chatType = Convert.toInt(data.get("chatType"));
         Integer messageType = Convert.toInt(data.get("msgType"));
         Long receiverId = Convert.toLong(data.get("receiverId"));
+        String deviceId = Convert.toStr(data.get("deviceId"));
 
         // 参数校验
         if (chatType == null || messageType == null || receiverId == null || clientMsgId == null) {
@@ -280,7 +288,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         // Msg:N, MQ消息推送
         if (isFirstTimeSave) {
             SendMessageBo sendMessageBo = new SendMessageBo(
-                    receiverId, content, chatType, messageType, senderId, id, sendTime
+                    receiverId, content, chatType, messageType, senderId, id, sendTime, deviceId
             );
             messageService.sendMessageToUser(sendMessageBo);
         }

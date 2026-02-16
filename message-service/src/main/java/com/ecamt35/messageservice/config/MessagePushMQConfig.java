@@ -1,6 +1,6 @@
 package com.ecamt35.messageservice.config;
 
-import com.ecamt35.messageservice.constant.RabbitMQConstant;
+import com.ecamt35.messageservice.constant.MessagePushConstant;
 import org.springframework.amqp.core.*;
 import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import org.springframework.amqp.support.converter.MessageConverter;
@@ -8,17 +8,18 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
-public class RabbitMQConfig {
+public class MessagePushMQConfig {
 
-    private final RabbitMQConstant rabbitMQConstant;
-    public RabbitMQConfig(RabbitMQConstant rabbitMQConstant) {
-        this.rabbitMQConstant = rabbitMQConstant;
+    private final MessagePushConstant messagePushConstant;
+
+    public MessagePushMQConfig(MessagePushConstant messagePushConstant) {
+        this.messagePushConstant = messagePushConstant;
     }
 
     @Bean
     DirectExchange websocketMessageExchange() {
         return new DirectExchange(
-                rabbitMQConstant.getWebsocketMessageExchange(),
+                messagePushConstant.getWebsocketMessageExchange(),
                 true,   // durable
                 false   // autoDelete
         );
@@ -26,9 +27,9 @@ public class RabbitMQConfig {
 
     @Bean
     Queue websocketMessageQueue() {
-        return QueueBuilder.durable(rabbitMQConstant.getWebsocketMessageQueue())
-                .deadLetterExchange(rabbitMQConstant.getDeadWebsocketMessageExchange())
-                .deadLetterRoutingKey(rabbitMQConstant.getDeadWebsocketMessageRoutingKey())
+        return QueueBuilder.durable(messagePushConstant.getWebsocketMessageQueue())
+                .deadLetterExchange(messagePushConstant.getDeadWebsocketMessageExchange())
+                .deadLetterRoutingKey(messagePushConstant.getDeadWebsocketMessageRoutingKey())
                 .build();
     }
 
@@ -36,14 +37,14 @@ public class RabbitMQConfig {
     Binding websocketBinding() {
         return BindingBuilder.bind(websocketMessageQueue())
                 .to(websocketMessageExchange())
-                .with(rabbitMQConstant.getWebsocketMessageKey());
+                .with(messagePushConstant.getWebsocketMessageKey());
     }
 
 
     @Bean
     DirectExchange deadWebsocketExchange() {
         return new DirectExchange(
-                rabbitMQConstant.getDeadWebsocketMessageExchange(),
+                messagePushConstant.getDeadWebsocketMessageExchange(),
                 true,
                 false
         );
@@ -51,14 +52,14 @@ public class RabbitMQConfig {
 
     @Bean
     Queue deadWebsocketQueue() {
-        return new Queue(rabbitMQConstant.getDeadWebsocketMessageQueue(), true);
+        return new Queue(messagePushConstant.getDeadWebsocketMessageQueue(), true);
     }
 
     @Bean
     Binding deadWebsocketBinding() {
         return BindingBuilder.bind(deadWebsocketQueue())
                 .to(deadWebsocketExchange())
-                .with(rabbitMQConstant.getDeadWebsocketMessageRoutingKey());
+                .with(messagePushConstant.getDeadWebsocketMessageRoutingKey());
     }
 
 

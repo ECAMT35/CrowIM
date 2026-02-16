@@ -1,6 +1,5 @@
 package com.ecamt35.messageservice.listener;
 
-import com.ecamt35.messageservice.constant.RabbitMQConstant;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
 import com.ecamt35.messageservice.websocket.MessageService;
 import jakarta.annotation.Resource;
@@ -15,7 +14,7 @@ public class MessagePushListener {
     @Resource
     private MessageService messageService;
 
-    @RabbitListener(queues = "#{rabbitMQConstant.getWebsocketMessageQueue()}")
+    @RabbitListener(queues = "#{messagePushConstant.getWebsocketMessageQueue()}")
     public void pushMessageOnline(SendMessageBo sendMessageBo) {
         messageService.sendMessageToUser(sendMessageBo);
     }

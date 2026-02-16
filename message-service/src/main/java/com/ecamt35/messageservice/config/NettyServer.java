@@ -3,6 +3,7 @@ package com.ecamt35.messageservice.config;
 import cn.hutool.core.lang.Snowflake;
 import com.ecamt35.messageservice.service.MessagePrivateChatService;
 import com.ecamt35.messageservice.websocket.MessageService;
+import com.ecamt35.messageservice.websocket.UserChannelRegistry;
 import com.ecamt35.messageservice.websocket.WebSocketFrameHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.bootstrap.ServerBootstrap;
@@ -47,6 +48,8 @@ public class NettyServer {
     private MessagePrivateChatService messagePrivateChatService;
     @Resource
     private ObjectMapper objectMapper;
+    @Resource
+    private UserChannelRegistry userChannelRegistry;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -91,7 +94,8 @@ public class NettyServer {
                                             messageService,
                                             snowflake,
                                             messagePrivateChatService,
-                                            objectMapper
+                                            objectMapper,
+                                            userChannelRegistry
                                     )
                             );
                         }

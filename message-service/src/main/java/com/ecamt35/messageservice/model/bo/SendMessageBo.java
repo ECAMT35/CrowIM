@@ -15,4 +15,6 @@ public class SendMessageBo {
     private Long senderId;
     private Long messageId;
     private Long sendTime;
+
+    private String deviceId;
 }

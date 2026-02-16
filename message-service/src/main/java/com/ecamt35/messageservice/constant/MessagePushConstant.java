@@ -4,7 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
-public class RabbitMQConstant {
+public class MessagePushConstant {
 
     @Value("${node-name}")
     private String nodeName;
