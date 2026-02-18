@@ -7,7 +7,6 @@ import com.ecamt35.messageservice.model.vo.PushVo;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelId;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
@@ -96,17 +95,6 @@ public class MessageService {
             if (deviceId == null || deviceId.isBlank()) continue;
             deliverToOneDevice(deviceId, pushVoJson, sendMessageBo);
         }
-    }
-
-    /**
-     * 根据 ChannelId 获取 Channel
-     */
-    public Channel getChannel(ChannelId channelId) {
-        if (channelId == null) {
-            log.warn("ChannelId is null");
-            return null;
-        }
-        return userChannelRegistry.getChannel(channelId);
     }
 
     /**

@@ -4,7 +4,6 @@ import com.ecamt35.messageservice.constant.OfflineConnectConstant;
 import com.ecamt35.messageservice.model.bo.OfflineNotificationBo;
 import com.ecamt35.messageservice.util.BusinessException;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelId;
 import io.netty.util.AttributeKey;
 import jakarta.annotation.PreDestroy;
 import jakarta.annotation.Resource;
@@ -37,7 +36,6 @@ public class UserChannelRegistry {
 
     // key 用 userId:deviceId，避免不同用户 deviceId 冲突
     private final ConcurrentMap<String, Channel> deviceChannels = new ConcurrentHashMap<>();
-    private final ConcurrentMap<ChannelId, Channel> channelMap = new ConcurrentHashMap<>();
 
     @Resource
     private RedisTemplate<String, String> redisTemplate;
@@ -79,7 +77,6 @@ public class UserChannelRegistry {
                 throw new BusinessException("Device is being registered by another node, please retry later");
             }
 
-            //
             String redisKey = wsOnlineKey(userId, deviceId);
             Object oldNodeObj = redisTemplate.opsForHash().get(redisKey, "node");
             Object oldSidObj = redisTemplate.opsForHash().get(redisKey, "sessionId");
@@ -89,7 +86,7 @@ public class UserChannelRegistry {
             // 检查设备是否已在其他节点在线, 通知旧节点只下线 oldSessionId 那条连接
             if (oldNode != null && !oldNode.isBlank() && !nodeName.equals(oldNode)) {
                 OfflineNotificationBo notification = new OfflineNotificationBo(
-                        userId, deviceId, oldNode, "new_connection", oldSessionId // [CHANGE]
+                        userId, deviceId, oldNode, "new_connection", oldSessionId
                 );
                 rabbitTemplate.convertAndSend(
                         offlineConnectConstant.getOfflineConnectExchange(),
@@ -100,31 +97,37 @@ public class UserChannelRegistry {
                         oldNode, userId, deviceId, oldSessionId);
             }
 
-            // 关闭本节点可能存在的旧连接（同一 userId+deviceId 重复注册）
-            String lk = localKey(userId, deviceId); // [ADD]
-            Channel oldChannel = deviceChannels.get(lk);
-            if (oldChannel != null) {
-                log.info("User {} device {} already connected on this node, closing old channel", userId, deviceId);
-                deviceChannels.remove(lk);
-                channelMap.remove(oldChannel.id());
-                if (oldChannel.isActive()) {
-                    oldChannel.attr(USER_ID_KEY).set(null);
-                    oldChannel.attr(DEVICE_ID_KEY).set(null);
-                    oldChannel.attr(SESSION_ID_KEY).set(null);
-                    oldChannel.attr(REGISTERED_KEY).set(false);
-                    oldChannel.close();
-                }
-            }
 
-            // 绑定新连接到本地缓存
+            // 先本地绑定（attrs + deviceChannels）
+            // 如果先放到 Redis，后面的操作失败了，Redis 路由也成了废数据
+            // 不如先本地做好，Redis 路由失败了还能靠 catch 回滚，少了 Redis 上的废数据
+            // 绑定新连接的属性
             channel.attr(USER_ID_KEY).set(userId);
             channel.attr(DEVICE_ID_KEY).set(deviceId);
             channel.attr(SESSION_ID_KEY).set(newSessionId);
             channel.attr(REGISTERED_KEY).set(true);
 
-            deviceChannels.put(lk, channel);
-            channelMap.put(channel.id(), channel);
+            String lk = localKey(userId, deviceId);
+            Channel oldChannel = deviceChannels.put(lk, channel);
 
+            // 关闭本地可能的旧连接
+            if (oldChannel != null && oldChannel != channel) {
+                log.info("User {} device {} already connected on this node, closing old channel", userId, deviceId);
+
+                oldChannel.attr(USER_ID_KEY).set(null);
+                oldChannel.attr(DEVICE_ID_KEY).set(null);
+                oldChannel.attr(SESSION_ID_KEY).set(null);
+                oldChannel.attr(REGISTERED_KEY).set(false);
+
+                // close 切回旧连接的 eventLoop
+                oldChannel.eventLoop().execute(() -> {
+                    if (oldChannel.isActive()) {
+                        oldChannel.close();
+                    }
+                });
+            }
+
+            // Redis 在线信息更新
             Map<String, Object> hashData = new HashMap<>();
             hashData.put("node", nodeName);
             hashData.put("sessionId", newSessionId);
@@ -140,8 +143,8 @@ public class UserChannelRegistry {
             log.error("Lock acquisition interrupted for device {}", deviceId, e);
             throw new BusinessException(e.getMessage());
         } catch (RuntimeException e) {
-            deviceChannels.remove(localKey(userId, deviceId));
-            channelMap.remove(channel.id());
+            // 回滚，仍然指向当前 channel 时才删除，避免误删新连接
+            deviceChannels.remove(localKey(userId, deviceId), channel);
             channel.attr(USER_ID_KEY).set(null);
             channel.attr(DEVICE_ID_KEY).set(null);
             channel.attr(SESSION_ID_KEY).set(null);
@@ -187,19 +190,19 @@ public class UserChannelRegistry {
             Object sidObj = redisTemplate.opsForHash().get(redisKey, "sessionId");
             String redisSid = sidObj == null ? null : String.valueOf(sidObj);
             if (sessionId != null && sessionId.equals(redisSid)) {
-
                 try {
                     redisTemplate.delete(redisKey);
                 } catch (Exception e) {
-                    log.error("Failed to delete Redis online key for device {}, sessionId: {}, but continuing local cleanup", deviceId, sessionId, e);
+                    log.error("Failed to delete Redis online key for device {}, sessionId: {}, but continuing local cleanup",
+                            deviceId, sessionId, e);
                 }
             } else {
                 log.info("Skip delete redis ws online because session mismatch, userId={}, deviceId={}, local={}, redis={}",
                         userId, deviceId, sessionId, redisSid);
             }
 
-            deviceChannels.remove(localKey(userId, deviceId));
-            channelMap.remove(channel.id());
+            // 只在 map 里仍然是当前 channel 时才 remove，避免旧连接 close 误删新连接
+            deviceChannels.remove(localKey(userId, deviceId), channel);
 
             channel.attr(USER_ID_KEY).set(null);
             channel.attr(DEVICE_ID_KEY).set(null);
@@ -233,18 +236,6 @@ public class UserChannelRegistry {
         return deviceChannels.get(localKey(userId, deviceId));
     }
 
-    /**
-     * 根据 ChannelId 获取 Channel
-     */
-    public Channel getChannel(ChannelId channelId) {
-        if (channelId == null) {
-            log.info("Query failed: ChannelId is null");
-            return null;
-        }
-        Channel channel = channelMap.get(channelId);
-        return channel;
-    }
-
     public String localKey(Long userId, String deviceId) {
         return userId + ":" + deviceId;
     }
@@ -255,8 +246,6 @@ public class UserChannelRegistry {
 
     @PreDestroy
     public void destroy() {
-        // 清空所有容器
         deviceChannels.clear();
-        channelMap.clear();
     }
 }

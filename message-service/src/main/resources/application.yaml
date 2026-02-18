@@ -67,4 +67,5 @@ snowflake:
 node-name: node1
 
 # 设备在线状态过期时间, 单位：秒
-device-session-timeout: 60
+# 其实实时性也不需要这么高，当用户断开连接的时候再从redis删除就好了
+device-session-timeout: 3600

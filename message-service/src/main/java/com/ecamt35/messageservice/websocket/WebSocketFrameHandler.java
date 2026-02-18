@@ -13,7 +13,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelId;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.*;
 import lombok.extern.slf4j.Slf4j;
@@ -202,21 +201,20 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             return;
         }
 
-        ChannelId channelId = ctx.channel().id();
-        Thread.ofVirtual()
-                .start(() -> {
-                    log.info("Handling message in thread: {}", Thread.currentThread());
-                    dispatchMessageTask(channelId, commonPacketDto);
-                });
+        final Channel channel = ctx.channel();
+
+        Thread.ofVirtual().start(() -> {
+            log.info("Handling message in thread: {}", Thread.currentThread());
+            dispatchMessageTask(channel, commonPacketDto);
+        });
     }
 
     /**
      * 消息处理分发
      */
-    private void dispatchMessageTask(ChannelId channelId, CommonPacketDto commonPacketDto) {
-        Channel channel = messageService.getChannel(channelId);
-        if (channel == null) {
-            log.warn("Channel not found, channelId:{}", channelId);
+    private void dispatchMessageTask(Channel channel, CommonPacketDto commonPacketDto) {
+        if (channel == null || !channel.isActive()) {
+            log.warn("Channel is inactive, skip dispatch");
             return;
         }
 
@@ -232,7 +230,6 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             }
         }
     }
-
 
     /**
      * Msg:R
