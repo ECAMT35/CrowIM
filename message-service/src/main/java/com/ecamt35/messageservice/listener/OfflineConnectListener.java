@@ -18,27 +18,49 @@ public class OfflineConnectListener {
     @RabbitListener(queues = "#{offlineConnectConstant.getOfflineConnectQueue()}")
     public void handleOffline(OfflineNotificationBo notification) {
         log.info("Received offline notification: {}", notification);
-        // 关闭指定 sessionId 的旧连接，但避免误关新连接
+
+        String targetSid = notification.getSessionId();
+        if (targetSid == null || targetSid.isBlank()) {
+            log.warn("Skip offline notify because sessionId is blank: {}", notification);
+            return;
+        }
+
         Channel ch = userChannelRegistry.getRegisteredChannel(notification.getUserId(), notification.getDeviceId());
         if (ch == null) {
             log.info("No local channel found for userId={}, deviceId={}, ignore", notification.getUserId(), notification.getDeviceId());
             return;
         }
-        // 防误关
-        String localSessionId = ch.attr(UserChannelRegistry.SESSION_ID_KEY).get();
-        if (notification.getSessionId() != null && !notification.getSessionId().isBlank()
-                && localSessionId != null && !localSessionId.equals(notification.getSessionId())) {
-            log.info("SessionId mismatch, ignore offline. userId={}, deviceId={}, local={}, notify={}",
-                    notification.getUserId(), notification.getDeviceId(), localSessionId, notification.getSessionId());
-            return;
-        }
 
-        log.info("Closing old channel for userId={}, deviceId={}, sessionId={}",
-                notification.getUserId(), notification.getDeviceId(), localSessionId);
+        ch.eventLoop().execute(() -> {
+            if (!ch.isActive()) {
+                return;
+            }
+            // 关闭指定 sessionId 的旧连接，但避免误关新连接
+            String localSid = ch.attr(UserChannelRegistry.SESSION_ID_KEY).get();
+            if (localSid == null) {
+                log.info("Ignore offline because local sessionId is null (maybe not committed or already unregistered), notifySid={}", targetSid);
+                return;
+            }
 
-        userChannelRegistry.unregisterUser(ch);
-        if (ch.isActive()) {
+            // 防误关
+            if (!localSid.equals(targetSid)) {
+                log.info("SessionId mismatch, ignore offline. userId={}, deviceId={}, local={}, notify={}",
+                        notification.getUserId(), notification.getDeviceId(), localSid, targetSid);
+                return;
+            }
+
+            Boolean reg = ch.attr(UserChannelRegistry.REGISTERED_KEY).get();
+            if (reg == null || !reg) {
+                log.info("Ignore offline because channel not registered yet, userId={}, deviceId={}, sid={}",
+                        notification.getUserId(), notification.getDeviceId(), localSid);
+                return;
+            }
+
+            log.info("Closing old channel for userId={}, deviceId={}, sessionId={}", notification.getUserId(), notification.getDeviceId(), localSid);
+
+            userChannelRegistry.unregisterAsync(ch);
             ch.close();
-        }
+        });
+
     }
 }

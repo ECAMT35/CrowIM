@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
 @Component
@@ -50,6 +51,8 @@ public class NettyServer {
     private ObjectMapper objectMapper;
     @Resource
     private UserChannelRegistry userChannelRegistry;
+    @Resource(name = "virtualExecutor")
+    private ExecutorService virtualExecutor;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -95,7 +98,8 @@ public class NettyServer {
                                             snowflake,
                                             messagePrivateChatService,
                                             objectMapper,
-                                            userChannelRegistry
+                                            userChannelRegistry,
+                                            virtualExecutor
                                     )
                             );
                         }
@@ -121,16 +125,17 @@ public class NettyServer {
     public void stop() {
         log.info("Shutting down Netty WebSocket server...");
 
-        if (serverChannel != null) {
-            serverChannel.close();
-        }
-
-        if (workerGroup != null) {
-            workerGroup.shutdownGracefully();
-        }
-
-        if (bossGroup != null) {
-            bossGroup.shutdownGracefully();
+        try {
+            if (serverChannel != null) {
+                serverChannel.close().syncUninterruptibly();
+            }
+        } finally {
+            if (workerGroup != null) {
+                workerGroup.shutdownGracefully().syncUninterruptibly();
+            }
+            if (bossGroup != null) {
+                bossGroup.shutdownGracefully().syncUninterruptibly();
+            }
         }
 
         log.info("Netty WebSocket server stopped.");

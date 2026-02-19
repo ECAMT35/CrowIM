@@ -20,6 +20,7 @@ import org.springframework.dao.DuplicateKeyException;
 
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
 
 /**
  * WebSocket 消息处理器，负责处理客户端的 WebSocket 连接、消息接收和异常处理。
@@ -38,17 +39,21 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
     private final ObjectMapper objectMapper;
     private final UserChannelRegistry userChannelRegistry;
 
+    private final ExecutorService virtualExecutor;
+
     // 构造器注入，在初始化 Pipeline 时传入 Bean
     public WebSocketFrameHandler(MessageService messageService,
                                  Snowflake snowflake,
                                  MessagePrivateChatService messagePrivateChatService,
                                  ObjectMapper objectMapper,
-                                 UserChannelRegistry userChannelRegistry) {
+                                 UserChannelRegistry userChannelRegistry,
+                                 ExecutorService virtualExecutor) {
         this.messageService = messageService;
         this.snowflake = snowflake;
         this.messagePrivateChatService = messagePrivateChatService;
         this.objectMapper = objectMapper;
         this.userChannelRegistry = userChannelRegistry;
+        this.virtualExecutor = virtualExecutor;
     }
 
     /**
@@ -71,7 +76,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
      */
     @Override
     public void handlerRemoved(ChannelHandlerContext ctx) {
-        messageService.unregisterUser(ctx.channel());
+        userChannelRegistry.unregisterAsync(ctx.channel());
         log.info("Connection closed: {}", ctx.channel().remoteAddress());
     }
 
@@ -161,9 +166,25 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             return;
         }
 
-        userChannelRegistry.registerUser(userId, deviceId, ctx.channel());
-        ctx.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS));
-
+        Channel ch = ctx.channel();
+        userChannelRegistry.registerUserAsync(userId, deviceId, ch)
+                .whenComplete((v, ex) -> {
+                    if (ex == null) {
+                        ch.eventLoop().execute(() -> {
+                            if (ch.isActive()) {
+                                ch.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS));
+                            }
+                        });
+                    } else {
+                        log.warn("Register failed, userId={}, deviceId={}, reason={}", userId, deviceId, ex.getMessage());
+                        ch.eventLoop().execute(() -> {
+                            if (ch.isActive()) {
+                                ch.writeAndFlush(new TextWebSocketFrame("REGISTER_FAILED"));
+                                ch.close();
+                            }
+                        });
+                    }
+                });
     }
 
     /**
@@ -203,7 +224,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
 
         final Channel channel = ctx.channel();
 
-        Thread.ofVirtual().start(() -> {
+        virtualExecutor.execute(() -> {
             log.info("Handling message in thread: {}", Thread.currentThread());
             dispatchMessageTask(channel, commonPacketDto);
         });
@@ -244,7 +265,6 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         Integer chatType = Convert.toInt(data.get("chatType"));
         Integer messageType = Convert.toInt(data.get("msgType"));
         Long receiverId = Convert.toLong(data.get("receiverId"));
-        String deviceId = Convert.toStr(data.get("deviceId"));
 
         // 参数校验
         if (chatType == null || messageType == null || receiverId == null || clientMsgId == null) {
@@ -253,7 +273,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             return;
         }
 
-        Long senderId = messageService.getUserId(channel);
+        Long senderId = userChannelRegistry.getUserId(channel);
         if (senderId == null) {
             sendThreadSafeResponse(channel, new PushVo(PacketTypeConstant.INSUFFICIENT_PERMISSIONS, data));
             log.info("User not logged in, channel: {}", channel.id());
@@ -349,7 +369,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         }
 
         // 更新DB状态
-        Long currentUserId = messageService.getUserId(channel);
+        Long currentUserId = userChannelRegistry.getUserId(channel);
         if (!receiverId.equals(currentUserId)) {
             sendThreadSafeResponse(channel, new PushVo(PacketTypeConstant.INSUFFICIENT_PERMISSIONS, data));
             log.info("Insufficient permissions to update, user:{} try to update msg:{}", currentUserId, data);

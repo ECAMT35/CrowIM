@@ -1,5 +1,6 @@
 package com.ecamt35.messageservice.websocket;
 
+import cn.hutool.core.lang.Snowflake;
 import com.ecamt35.messageservice.constant.OfflineConnectConstant;
 import com.ecamt35.messageservice.model.bo.OfflineNotificationBo;
 import com.ecamt35.messageservice.util.BusinessException;
@@ -17,9 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 @Component
 @Slf4j
@@ -29,6 +28,10 @@ public class UserChannelRegistry {
     public static final AttributeKey<Boolean> REGISTERED_KEY = AttributeKey.valueOf("registered");
     public static final AttributeKey<String> DEVICE_ID_KEY = AttributeKey.valueOf("deviceId");
     public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("sessionId");
+
+    // 同一 channel 重复 REGISTER（VT1/VT2乱序）; handlerRemoved/unregister 已发生，但 VT 晚到仍想提交
+    // 这些都是多余的操作，加一个版本号即可完成判断，当 channel 实时的 token 与创建 VT1 时的不一样就不执行了，节省IO、CPU
+    public static final AttributeKey<Long> REG_TOKEN_KEY = AttributeKey.valueOf("regToken");
 
     // Redis keys
     public static final String WS_ONLINE_KEY_PREFIX = "ws:online:"; // ws:online:{userId}:{deviceId}
@@ -45,111 +48,173 @@ public class UserChannelRegistry {
     private RedissonClient redissonClient;
     @Resource
     private OfflineConnectConstant offlineConnectConstant;
+    @Resource
+    private Snowflake snowflake;
+    @Resource(name = "virtualExecutor")
+    private ExecutorService virtualExecutor;
     @Value("${node-name}")
     private String nodeName;
     @Value("${device-session-timeout}")
     private int deviceSessionTimeout;
 
-
     /**
-     * 注册用户与通道绑定
+     * 异步发起注册流程：
+     * 1) 在 eventLoop 内写入本次注册的 attrs/token，并做幂等与“正在注册”判断
+     * 2) 将阻塞/IO 的注册流程交给虚拟线程执行（分布式锁 + Redis 路由 + MQ 踢旧）
      */
-    public void registerUser(Long userId, String deviceId, Channel channel) {
+    public CompletableFuture<Void> registerUserAsync(Long userId, String deviceId, Channel channel) {
+        CompletableFuture<Void> future = new CompletableFuture<>();
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
-            log.warn("Registration failed: invalid userId or deviceId, userId={}, deviceId={}", userId, deviceId);
-            throw new BusinessException("Invalid userId or deviceId");
+            future.completeExceptionally(new BusinessException("Invalid userId or deviceId"));
+            return future;
         }
-        if (channel == null || !channel.isActive() || !channel.isWritable()) {
-            log.warn("Registration failed: invalid channel, userId={}, deviceId={}", userId, deviceId);
-            throw new BusinessException("Invalid channel");
+        if (channel == null) {
+            future.completeExceptionally(new BusinessException("Channel is null"));
+            return future;
         }
 
-        String lockKey = LOCK_USER_DEVICE_KEY_PREFIX + userId + ":" + deviceId;
-        RLock lock = redissonClient.getLock(lockKey);
-
-        // 当前连接 sessionId（ChannelId 长文本）
         final String newSessionId = channel.id().asLongText();
+        final Long regToken = snowflake.nextId();
+        final String redisKey = wsOnlineKey(userId, deviceId);
+        final String lockKey = LOCK_USER_DEVICE_KEY_PREFIX + userId + ":" + deviceId;
 
-        try {
-            if (!lock.tryLock(5, 15, TimeUnit.SECONDS)) {
-                log.error("Failed to acquire lock for userId={}, deviceId={}, registration aborted", userId, deviceId);
-                throw new BusinessException("Device is being registered by another node, please retry later");
+        // 先在 eventLoop 写入本次注册标识 + 基础 attrs，保证和 handlerRemoved 的顺序一致
+        // 同一个channel串行，做一些判断基本并发问题不大
+        channel.eventLoop().execute(() -> {
+            if (!channel.isActive()) {
+                future.completeExceptionally(new BusinessException("Channel inactive"));
+                return;
+            }
+            Boolean reg = channel.attr(REGISTERED_KEY).get();
+            Long existedUser = channel.attr(USER_ID_KEY).get();
+            String existedDev = channel.attr(DEVICE_ID_KEY).get();
+
+            // 重复 REGISTER 幂等
+            if (Boolean.TRUE.equals(reg)
+                    && existedUser != null && existedUser.equals(userId)
+                    && existedDev != null && existedDev.equals(deviceId)) {
+                future.complete(null);
+                return;
             }
 
-            String redisKey = wsOnlineKey(userId, deviceId);
-            Object oldNodeObj = redisTemplate.opsForHash().get(redisKey, "node");
-            Object oldSidObj = redisTemplate.opsForHash().get(redisKey, "sessionId");
-            String oldNode = oldNodeObj == null ? null : String.valueOf(oldNodeObj);
-            String oldSessionId = oldSidObj == null ? null : String.valueOf(oldSidObj);
-
-            // 检查设备是否已在其他节点在线, 通知旧节点只下线 oldSessionId 那条连接
-            if (oldNode != null && !oldNode.isBlank() && !nodeName.equals(oldNode)) {
-                OfflineNotificationBo notification = new OfflineNotificationBo(
-                        userId, deviceId, oldNode, "new_connection", oldSessionId
-                );
-                rabbitTemplate.convertAndSend(
-                        offlineConnectConstant.getOfflineConnectExchange(),
-                        "offline-connect-" + oldNode,
-                        notification
-                );
-                log.info("Sent offline notify to node={}, userId={}, deviceId={}, oldSessionId={}",
-                        oldNode, userId, deviceId, oldSessionId);
+            // 避免重复 REGISTER 反复启动虚拟线程
+            // 判断 REGISTERED != true 且 token 已存在，说明已经有一次注册尝试在跑
+            Long curToken = channel.attr(REG_TOKEN_KEY).get();
+            if (curToken != null && !Boolean.TRUE.equals(reg)) {
+                future.completeExceptionally(new BusinessException("Register in progress"));
+                return;
             }
 
-
-            // 先本地绑定（attrs + deviceChannels）
-            // 如果先放到 Redis，后面的操作失败了，Redis 路由也成了废数据
-            // 不如先本地做好，Redis 路由失败了还能靠 catch 回滚，少了 Redis 上的废数据
-            // 绑定新连接的属性
+            channel.attr(REG_TOKEN_KEY).set(regToken);
             channel.attr(USER_ID_KEY).set(userId);
             channel.attr(DEVICE_ID_KEY).set(deviceId);
             channel.attr(SESSION_ID_KEY).set(newSessionId);
-            channel.attr(REGISTERED_KEY).set(true);
+            channel.attr(REGISTERED_KEY).set(false);
 
-            String lk = localKey(userId, deviceId);
-            Channel oldChannel = deviceChannels.put(lk, channel);
+            // 阻塞部分丢到虚拟线程
+            virtualExecutor.execute(() -> doRegisterInVirtualThread(userId, deviceId, channel, newSessionId, regToken, lockKey, redisKey, future));
+        });
 
-            // 关闭本地可能的旧连接
-            if (oldChannel != null && oldChannel != channel) {
-                log.info("User {} device {} already connected on this node, closing old channel", userId, deviceId);
+        return future;
+    }
 
-                oldChannel.attr(USER_ID_KEY).set(null);
-                oldChannel.attr(DEVICE_ID_KEY).set(null);
-                oldChannel.attr(SESSION_ID_KEY).set(null);
-                oldChannel.attr(REGISTERED_KEY).set(false);
+    /**
+     *
+     * 虚拟线程中的“完整注册事务”：
+     * 1. 获取分布式锁
+     * 2. 读取旧路由(node/sessionId)
+     * 3. 校验本次注册 token 仍有效
+     * 4. 在 eventLoop 绑定本地映射并关闭本机旧连接
+     * 5. 写 Redis 路由并设置 TTL
+     * 6. 在 eventLoop 标记 registered=true
+     * 7. 必要时发送 MQ 通知旧节点踢旧连接
+     * 8. complete future
+     *
+     */
+    private void doRegisterInVirtualThread(Long userId, String deviceId, Channel channel, String newSessionId,
+                                           Long regToken, String lockKey, String redisKey, CompletableFuture<Void> future) {
 
-                // close 切回旧连接的 eventLoop
-                oldChannel.eventLoop().execute(() -> {
-                    if (oldChannel.isActive()) {
-                        oldChannel.close();
-                    }
-                });
+        RLock lock = redissonClient.getLock(lockKey);
+
+        String oldNode = null;
+        String oldSessionId = null;
+
+        try {
+            if (!lock.tryLock(5, 15, TimeUnit.SECONDS)) {
+                throw new BusinessException("Device is being registered by another node, please retry later");
             }
 
-            // Redis 在线信息更新
-            Map<String, Object> hashData = new HashMap<>();
-            hashData.put("node", nodeName);
-            hashData.put("sessionId", newSessionId);
-            hashData.put("ts", String.valueOf(System.currentTimeMillis()));
+            // 旧路由
+            Object oldNodeObj = redisTemplate.opsForHash().get(redisKey, "node");
+            Object oldSidObj = redisTemplate.opsForHash().get(redisKey, "sessionId");
+            oldNode = oldNodeObj == null ? null : String.valueOf(oldNodeObj);
+            oldSessionId = oldSidObj == null ? null : String.valueOf(oldSidObj);
 
-            redisTemplate.opsForHash().putAll(redisKey, hashData);
-            redisTemplate.expire(redisKey, deviceSessionTimeout, TimeUnit.SECONDS);
+            // 如果这次注册已经失效（连接断了/被新注册覆盖），直接失败
+            if (!isAttemptValid(channel, regToken)) {
+                throw new BusinessException("Channel closed or registration superseded");
+            }
 
-            log.info("User {} device {} registered on node {}, sessionId={}", userId, deviceId, nodeName, newSessionId);
+            // 先本地 commit，再写 Redis，避免Redis TTL垃圾
+            boolean committed = bindChannelAndCloseOldOnEventLoop(userId, deviceId, channel, regToken);
+            if (!committed) {
+                cleanupLocalOnEventLoop(userId, deviceId, channel, regToken);
+                throw new BusinessException("Channel closed before commit, registration aborted");
+            }
+
+            if (!isAttemptValid(channel, regToken)) {
+                cleanupLocalOnEventLoop(userId, deviceId, channel, regToken);
+                throw new BusinessException("Registration superseded after commit");
+            }
+
+            try {
+                Map<String, Object> hashData = new HashMap<>();
+                hashData.put("node", nodeName);
+                hashData.put("sessionId", newSessionId);
+                hashData.put("ts", String.valueOf(System.currentTimeMillis()));
+                redisTemplate.opsForHash().putAll(redisKey, hashData);
+                redisTemplate.expire(redisKey, deviceSessionTimeout, TimeUnit.SECONDS);
+            } catch (Exception e) {
+                // Redis 写失败时，抛出异常清理本地
+                throw new BusinessException("Write redis route failed: " + e.getMessage());
+            }
+
+            CompletableFuture<Void> markDone = new CompletableFuture<>();
+            channel.eventLoop().execute(() -> {
+                Long token = channel.attr(REG_TOKEN_KEY).get();
+                if (channel.isActive() && token != null && token.equals(regToken)) {
+                    channel.attr(REGISTERED_KEY).set(true);
+                }
+                markDone.complete(null);
+            });
+            markDone.join();
+
+            // 提交成功后再踢旧，避免新连接失败却踢旧
+            if (oldNode != null && !oldNode.isBlank() && oldSessionId != null && !oldSessionId.isBlank()
+                    && !nodeName.equals(oldNode)) {
+
+                if (isAttemptValid(channel, regToken)) {
+                    OfflineNotificationBo notification = new OfflineNotificationBo(
+                            userId, deviceId, oldNode, "new_connection", oldSessionId
+                    );
+                    rabbitTemplate.convertAndSend(
+                            offlineConnectConstant.getOfflineConnectExchange(),
+                            "offline-connect-" + oldNode,
+                            notification
+                    );
+                }
+            }
+
+            future.complete(null);
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Lock acquisition interrupted for device {}", deviceId, e);
-            throw new BusinessException(e.getMessage());
-        } catch (RuntimeException e) {
-            // 回滚，仍然指向当前 channel 时才删除，避免误删新连接
-            deviceChannels.remove(localKey(userId, deviceId), channel);
-            channel.attr(USER_ID_KEY).set(null);
-            channel.attr(DEVICE_ID_KEY).set(null);
-            channel.attr(SESSION_ID_KEY).set(null);
-            channel.attr(REGISTERED_KEY).set(false);
-            throw new BusinessException(e.getMessage());
+            cleanupLocalOnEventLoop(userId, deviceId, channel, regToken);
+            future.completeExceptionally(new BusinessException("Lock interrupted"));
+        } catch (Exception e) {
+            cleanupLocalOnEventLoop(userId, deviceId, channel, regToken);
+            future.completeExceptionally(e);
         } finally {
             if (lock.isHeldByCurrentThread()) {
                 lock.unlock();
@@ -158,68 +223,127 @@ public class UserChannelRegistry {
     }
 
     /**
-     * 注销用户并移除通道
+     * 将channel映射到deviceChannels
+     * 关闭本地可能的旧连接
+     * 返回 true 表示提交成功，false 表示 channel 已断或 token 不匹配
      */
-    public void unregisterUser(Channel channel) {
+    private boolean bindChannelAndCloseOldOnEventLoop(Long userId, String deviceId, Channel channel, Long regToken) {
+
+        CompletableFuture<Boolean> f = new CompletableFuture<>();
+
+        channel.eventLoop().execute(() -> {
+            if (!channel.isActive()) {
+                f.complete(false);
+                return;
+            }
+            Long token = channel.attr(REG_TOKEN_KEY).get();
+            if (token == null || !token.equals(regToken)) {
+                f.complete(false);
+                return;
+            }
+
+            String lk = localKey(userId, deviceId);
+            Channel oldChannel = deviceChannels.put(lk, channel);
+
+            // 关闭本地旧连接（同 device 重连/顶号）
+            if (oldChannel != null && oldChannel != channel) {
+                oldChannel.attr(USER_ID_KEY).set(null);
+                oldChannel.attr(DEVICE_ID_KEY).set(null);
+                oldChannel.attr(SESSION_ID_KEY).set(null);
+                oldChannel.attr(REGISTERED_KEY).set(false);
+                oldChannel.attr(REG_TOKEN_KEY).set(null);
+
+                oldChannel.eventLoop().execute(() -> {
+                    if (oldChannel.isActive()) oldChannel.close();
+                });
+            }
+
+            f.complete(true);
+        });
+
+        // 阻塞等待 NettyIO 线程完成
+        return f.join();
+    }
+
+    /**
+     * 异步触发注销：
+     * 1. eventLoop 内移除本地映射、清理 attrs
+     * 2. 虚拟线程中加锁并在 Redis 侧做 session 匹配才删除的路由清理
+     */
+    public void unregisterAsync(Channel channel) {
+
         if (channel == null) {
-            throw new BusinessException("Channel cannot be null");
-        }
-
-        Long userId = channel.attr(USER_ID_KEY).get();
-        String deviceId = channel.attr(DEVICE_ID_KEY).get();
-        String sessionId = channel.attr(SESSION_ID_KEY).get();
-
-        if (userId == null || deviceId == null) {
-            log.warn("Unregistration skipped: channel not bound, channelId={}", channel.id().asShortText());
             return;
         }
 
-        // 获取分布式锁
+        channel.eventLoop().execute(() -> {
+            Long userId = channel.attr(USER_ID_KEY).get();
+            String deviceId = channel.attr(DEVICE_ID_KEY).get();
+            String sessionId = channel.attr(SESSION_ID_KEY).get();
+
+            if (userId != null && deviceId != null) {
+                // 只在 map 仍指向当前 channel 时才删除，避免旧连接误删新连接
+                deviceChannels.remove(localKey(userId, deviceId), channel);
+
+                // 清掉 token，防止异步 register 晚到复活绑定
+                channel.attr(REG_TOKEN_KEY).set(null);
+                channel.attr(REGISTERED_KEY).set(false);
+                channel.attr(USER_ID_KEY).set(null);
+                channel.attr(DEVICE_ID_KEY).set(null);
+                channel.attr(SESSION_ID_KEY).set(null);
+
+                // Redis 删除放虚拟线程
+                virtualExecutor.execute(() -> deleteRedisRoute(userId, deviceId, sessionId));
+            }
+        });
+
+    }
+
+    private void deleteRedisRoute(Long userId, String deviceId, String sessionId) {
         String lockKey = LOCK_USER_DEVICE_KEY_PREFIX + userId + ":" + deviceId;
         RLock lock = redissonClient.getLock(lockKey);
 
+        String redisKey = wsOnlineKey(userId, deviceId);
+
         try {
             if (!lock.tryLock(5, 10, TimeUnit.SECONDS)) {
-                log.error("Failed to acquire lock for device {}, unregistration aborted", deviceId);
-                throw new BusinessException("Device is busy, please retry later");
+                return;
             }
 
-            // 先删 Redis，再清本地缓存
-            // 只删除匹配当前 sessionId 的 redis 在线信息，避免误删新会话
-            String redisKey = wsOnlineKey(userId, deviceId);
             Object sidObj = redisTemplate.opsForHash().get(redisKey, "sessionId");
             String redisSid = sidObj == null ? null : String.valueOf(sidObj);
+
+            // session 匹配才删，避免误删新会话
             if (sessionId != null && sessionId.equals(redisSid)) {
-                try {
-                    redisTemplate.delete(redisKey);
-                } catch (Exception e) {
-                    log.error("Failed to delete Redis online key for device {}, sessionId: {}, but continuing local cleanup",
-                            deviceId, sessionId, e);
-                }
-            } else {
-                log.info("Skip delete redis ws online because session mismatch, userId={}, deviceId={}, local={}, redis={}",
-                        userId, deviceId, sessionId, redisSid);
+                redisTemplate.delete(redisKey);
             }
-
-            // 只在 map 里仍然是当前 channel 时才 remove，避免旧连接 close 误删新连接
-            deviceChannels.remove(localKey(userId, deviceId), channel);
-
-            channel.attr(USER_ID_KEY).set(null);
-            channel.attr(DEVICE_ID_KEY).set(null);
-            channel.attr(SESSION_ID_KEY).set(null);
-            channel.attr(REGISTERED_KEY).set(false);
-
-            log.info("User {} device {} unregistered, sessionId={}, remote={}", userId, deviceId, sessionId, channel.remoteAddress());
 
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Lock acquisition interrupted for device {}", deviceId, e);
-            throw new BusinessException(e.getMessage());
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            if (lock.isHeldByCurrentThread()) lock.unlock();
         }
+    }
+
+    private void cleanupLocalOnEventLoop(Long userId, String deviceId, Channel channel, Long regToken) {
+        channel.eventLoop().execute(() -> {
+            deviceChannels.remove(localKey(userId, deviceId), channel);
+
+            Long token = channel.attr(REG_TOKEN_KEY).get();
+            if (token != null && token.equals(regToken)) {
+                channel.attr(REG_TOKEN_KEY).set(null);
+                channel.attr(REGISTERED_KEY).set(false);
+                channel.attr(USER_ID_KEY).set(null);
+                channel.attr(DEVICE_ID_KEY).set(null);
+                channel.attr(SESSION_ID_KEY).set(null);
+            }
+        });
+    }
+
+    private boolean isAttemptValid(Channel channel, Long regToken) {
+        if (channel == null || !channel.isActive()) return false;
+        Long token = channel.attr(REG_TOKEN_KEY).get();
+        return token != null && token.equals(regToken);
     }
 
     /**

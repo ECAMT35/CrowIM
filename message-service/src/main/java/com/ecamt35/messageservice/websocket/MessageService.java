@@ -35,19 +35,6 @@ public class MessageService {
     @Value("${node-name}")
     private String nodeName;
 
-    /**
-     * 注销用户并移除通道
-     */
-    public void unregisterUser(Channel channel) {
-        userChannelRegistry.unregisterUser(channel);
-    }
-
-    /**
-     * 获取通道绑定的用户 ID
-     */
-    public Long getUserId(Channel channel) {
-        return userChannelRegistry.getUserId(channel);
-    }
 
     /**
      * 向指定用户发送消息
@@ -85,10 +72,10 @@ public class MessageService {
         Map<Object, Object> deviceTokenMap = redisTemplate.opsForHash().entries(userDevicesKey);
 
         if (deviceTokenMap.isEmpty()) {
-            log.info("User {} has no online devices in {}, skip", receiverId, userDevicesKey);
+            log.info("User {} has no login devices in {}, skip", receiverId, userDevicesKey);
             return;
         }
-        log.info("Multimodal device push,device id:{}", receiverId);
+        log.info("Multimodal device push, receiverId:{}", receiverId);
         // 遍历每台设备，查询 ws 在线节点信息并投递
         for (Map.Entry<Object, Object> entry : deviceTokenMap.entrySet()) {
             String deviceId = Convert.toStr(entry.getKey());
