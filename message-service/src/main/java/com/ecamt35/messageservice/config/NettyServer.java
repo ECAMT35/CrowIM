@@ -11,6 +11,7 @@ import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.http.HttpObjectAggregator;
 import io.netty.handler.codec.http.HttpServerCodec;
+import io.netty.handler.codec.http.websocketx.WebSocketFrameAggregator;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import io.netty.handler.timeout.IdleStateHandler;
 import jakarta.annotation.PostConstruct;
@@ -81,6 +82,8 @@ public class NettyServer {
                             pipeline.addLast(new WebSocketServerProtocolHandler(
                                     path, null, true, maxFrameSize, false, true
                             ));
+                            // 分片帧聚合
+                            pipeline.addLast(new WebSocketFrameAggregator(maxFrameSize));
                             // 空闲检测（仅读空闲）
                             pipeline.addLast(new IdleStateHandler(
                                     idleTimeout, 0, 0, TimeUnit.SECONDS
