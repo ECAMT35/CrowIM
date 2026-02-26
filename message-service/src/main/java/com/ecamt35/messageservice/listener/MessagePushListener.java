@@ -1,7 +1,7 @@
 package com.ecamt35.messageservice.listener;
 
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
-import com.ecamt35.messageservice.websocket.MessageService;
+import com.ecamt35.messageservice.service.DeliveryService;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -12,11 +12,11 @@ import org.springframework.stereotype.Component;
 public class MessagePushListener {
 
     @Resource
-    private MessageService messageService;
+    private DeliveryService deliveryService;
 
     @RabbitListener(queues = "#{messagePushConstant.getWebsocketMessageQueue()}")
     public void pushMessageOnline(SendMessageBo sendMessageBo) {
-        messageService.sendMessageToUser(sendMessageBo);
+        deliveryService.deliverToUserDevices(sendMessageBo);
     }
 
 }

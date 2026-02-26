@@ -1,10 +1,8 @@
 package com.ecamt35.messageservice.config;
 
-import cn.hutool.core.lang.Snowflake;
-import com.ecamt35.messageservice.service.MessagePrivateChatService;
-import com.ecamt35.messageservice.websocket.MessageService;
 import com.ecamt35.messageservice.websocket.UserChannelRegistry;
 import com.ecamt35.messageservice.websocket.WebSocketFrameHandler;
+import com.ecamt35.messageservice.websocket.dispatch.MessageDispatcher;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.*;
@@ -42,11 +40,7 @@ public class NettyServer {
     private int idleTimeout;
 
     @Resource
-    private MessageService messageService;
-    @Resource
-    private Snowflake snowflake;
-    @Resource
-    private MessagePrivateChatService messagePrivateChatService;
+    private MessageDispatcher messageDispatcher;
     @Resource
     private ObjectMapper objectMapper;
     @Resource
@@ -94,14 +88,11 @@ public class NettyServer {
                             // WebSocket 消息处理器
                             pipeline.addLast(
                                     new WebSocketFrameHandler(
-                                            messageService,
-                                            snowflake,
-                                            messagePrivateChatService,
                                             objectMapper,
                                             userChannelRegistry,
-                                            virtualExecutor
-                                    )
-                            );
+                                            virtualExecutor,
+                                            messageDispatcher
+                                    ));
                         }
                     });
 

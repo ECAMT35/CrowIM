@@ -8,7 +8,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class SendMessageBo {
-    private Long receiverId;
+    private Long targetUserId;
     private String message;
     private Integer chatType;
     private Integer messageType;
@@ -16,4 +16,6 @@ public class SendMessageBo {
     private Long messageId;
     private Long sendTime;
     private String receiverDeviceId;
+    private Long conversationId;
+    private Long seq;
 }
