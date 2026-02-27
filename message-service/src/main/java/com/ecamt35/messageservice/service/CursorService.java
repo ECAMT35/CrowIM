@@ -226,12 +226,15 @@ public class CursorService {
         }
         if (seq < 0) seq = 0;
 
+        String hk = readHashKey(userId);
+        String field = String.valueOf(convId);
+
         // Redis 推进
         try {
             Long v = redisTemplate.execute(
                     maxHsetScript,
-                    Collections.singletonList(readHashKey(userId)),
-                    String.valueOf(convId),
+                    Collections.singletonList(hk),
+                    field,
                     String.valueOf(seq),
                     CURSOR_TTL_SECONDS
             );
@@ -250,9 +253,14 @@ public class CursorService {
 
         // 回填 Redis
         try {
-            String hk = readHashKey(userId);
-            redisTemplate.opsForHash().put(hk, String.valueOf(convId), String.valueOf(safe));
-            redisTemplate.expire(hk, CURSOR_TTL_SECONDS_LONG, TimeUnit.SECONDS);
+            Long v2 = redisTemplate.execute(
+                    maxHsetScript,
+                    Collections.singletonList(hk),
+                    field,
+                    String.valueOf(safe),
+                    CURSOR_TTL_SECONDS
+            );
+            if (v2 != null) safe = v2;
         } catch (Exception ignore) {
         }
         // todo 扔到MQ去更新DB ReadSeq
