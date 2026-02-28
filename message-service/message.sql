@@ -61,6 +61,6 @@ create table message
     deleted         tinyint    not null default 0 comment '逻辑删除:0未删,1已删',
 
     unique key uk_sender_client_msg (sender_id, client_msg_id),
-    key idx_conv_seq (conversation_id, seq),
+    unique key uk_conv_seq (conversation_id, seq),
     key idx_sender (sender_id)
 );

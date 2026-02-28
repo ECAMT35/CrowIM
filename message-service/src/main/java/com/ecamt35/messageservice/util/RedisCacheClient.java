@@ -2,6 +2,7 @@ package com.ecamt35.messageservice.util;
 
 import com.ecamt35.messageservice.config.RedisCachePropertiesConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -25,6 +26,7 @@ import java.util.function.Supplier;
  * - 传入的 key 必须是“业务完整 key”
  * - lockKey = lockPrefix + key
  */
+@Slf4j
 public class RedisCacheClient {
 
     /**
@@ -113,6 +115,7 @@ public class RedisCacheClient {
 
             // 回源
             R loaded = loader.apply(id);
+            log.debug("Loaded object from DB: {}", loaded);
 
             // 回填
             if (loaded == null) {

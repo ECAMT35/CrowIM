@@ -19,8 +19,9 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ConversationService {
 
-    private static final Duration PRIVATE_CONV_TTL = Duration.ofHours(6);
-    private static final Duration USER_CONV_IDS_TTL = Duration.ofMinutes(3);
+    private static final Duration PRIVATE_CONV_TTL = Duration.ofDays(7);
+    private static final Duration USER_CONV_IDS_TTL = Duration.ofDays(7);
+    private static final Duration CONV_TTL = Duration.ofDays(7);
 
     private final ConversationMapper conversationMapper;
     private final ConversationMemberMapper memberMapper;
@@ -177,6 +178,20 @@ public class ConversationService {
     }
 
     /**
+     * 查询会话（缓存优先）
+     */
+    public Conversation selectById(long convId) {
+        // key: im:conv:{convId}
+        return cacheClient.getOrLoadById(
+                "im:conv:",
+                convId,
+                CONV_TTL,
+                Conversation.class,
+                ignore -> conversationMapper.selectById(convId)
+        );
+    }
+
+    /**
      * 查询用户会话ID列表（缓存优先）
      */
     public List<Long> listConversationIdsForUserCached(long userId) {
@@ -205,4 +220,12 @@ public class ConversationService {
         long b = Math.max(peerA, peerB);
         cacheClient.evict("im:conv:private:" + a + ":" + b);
     }
+
+    /**
+     * 失效会话缓存（创建/删除/恢复等）
+     */
+    public void evictConversationById(long convId) {
+        cacheClient.evict("im:conv:" + convId);
+    }
+
 }
