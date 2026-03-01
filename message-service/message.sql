@@ -6,7 +6,7 @@ create table conversation
     type        tinyint  not null comment '会话类型：0=private,1=group',
     peer_a      bigint   null comment '单聊参与者a（较小user_id，type=0有效）',
     peer_b      bigint   null comment '单聊参与者b（较大user_id，type=0有效）',
-    group_id    bigint   null comment '群id（type=2有效）',
+    group_id    bigint   null comment '群id（type=1有效）',
 
     create_time datetime not null default current_timestamp,
     update_time datetime not null default current_timestamp on update current_timestamp,

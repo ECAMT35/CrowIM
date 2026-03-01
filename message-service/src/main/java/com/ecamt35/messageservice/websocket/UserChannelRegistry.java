@@ -247,12 +247,6 @@ public class UserChannelRegistry {
 
             // 关闭本地旧连接（同 device 重连/顶号）
             if (oldChannel != null && oldChannel != channel) {
-                oldChannel.attr(USER_ID_KEY).set(null);
-                oldChannel.attr(DEVICE_ID_KEY).set(null);
-                oldChannel.attr(SESSION_ID_KEY).set(null);
-                oldChannel.attr(REGISTERED_KEY).set(false);
-                oldChannel.attr(REG_TOKEN_KEY).set(null);
-
                 oldChannel.eventLoop().execute(() -> {
                     if (oldChannel.isActive()) oldChannel.close();
                 });
