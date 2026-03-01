@@ -13,14 +13,14 @@ import java.util.List;
 public interface ConversationMemberMapper extends BaseMapper<ConversationMember> {
 
     @Select("""
-            select id,conversation_id,user_id,role,mute,last_read_seq,join_time,update_time,deleted
+            select id,conversation_id,user_id,role,mute,last_read_seq,speak_banned_until,join_time,update_time,deleted
             from conversation_member
             where conversation_id=#{convId} and deleted=0
             """)
     List<ConversationMember> listActiveMembers(@Param("convId") Long convId);
 
     @Select("""
-            select id,conversation_id,user_id,role,mute,last_read_seq,join_time,update_time,deleted
+            select id,conversation_id,user_id,role,mute,last_read_seq,speak_banned_until,join_time,update_time,deleted
             from conversation_member
             where conversation_id=#{convId} and user_id=#{userId}
             order by deleted asc
@@ -29,11 +29,18 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMember>
     ConversationMember findAny(@Param("convId") Long convId, @Param("userId") Long userId);
 
     @Select("""
-            select id,conversation_id,user_id,role,mute,last_read_seq,join_time,update_time,deleted
+            select id,conversation_id,user_id,role,mute,last_read_seq,speak_banned_until,join_time,update_time,deleted
             from conversation_member
             where conversation_id=#{convId} and user_id=#{userId} and deleted=0
             """)
     ConversationMember findActive(@Param("convId") Long convId, @Param("userId") Long userId);
+
+    @Select("""
+            select user_id
+            from conversation_member
+            where conversation_id=#{convId} and role>=2 and deleted=0
+            """)
+    List<Long> listActiveManagerIds(@Param("convId") Long convId);
 
     @Update("""
             update conversation_member
@@ -41,4 +48,39 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMember>
             where conversation_id=#{convId} and user_id=#{userId} and deleted=0
             """)
     int updateReadCursor(@Param("convId") Long convId, @Param("userId") Long userId, @Param("readSeq") Long readSeq);
+
+    @Update("""
+            update conversation_member
+            set role=#{role}
+            where conversation_id=#{convId} and user_id=#{userId} and deleted=0
+            """)
+    int updateRole(@Param("convId") Long convId, @Param("userId") Long userId, @Param("role") Integer role);
+
+    @Update("""
+            update conversation_member
+            set speak_banned_until=#{bannedUntil}
+            where conversation_id=#{convId} and user_id=#{userId} and deleted=0
+            """)
+    int updateSpeakBannedUntil(@Param("convId") Long convId, @Param("userId") Long userId, @Param("bannedUntil") Long bannedUntil);
+
+    @Update("""
+            update conversation_member
+            set deleted=1
+            where conversation_id=#{convId} and user_id=#{userId} and deleted=0
+            """)
+    int removeMember(@Param("convId") Long convId, @Param("userId") Long userId);
+
+    @Update("""
+            update conversation_member
+            set deleted=1
+            where conversation_id=#{convId} and deleted=0
+            """)
+    int removeAllByConversation(@Param("convId") Long convId);
+
+    @Update("""
+            update conversation_member
+            set deleted=0, role=#{role}, speak_banned_until=0
+            where id=#{id} and deleted=1
+            """)
+    int restoreDeletedById(@Param("id") Long id, @Param("role") Integer role);
 }

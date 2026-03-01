@@ -1,10 +1,14 @@
 package com.ecamt35.messageservice.service;
 
 import cn.hutool.core.lang.Snowflake;
+import com.ecamt35.messageservice.constant.RelationStatusConstant;
 import com.ecamt35.messageservice.mapper.ConversationMemberMapper;
+import com.ecamt35.messageservice.mapper.ImGroupMapper;
 import com.ecamt35.messageservice.mapper.MessageMapper;
 import com.ecamt35.messageservice.model.bo.SendMessageBo;
+import com.ecamt35.messageservice.model.entity.Conversation;
 import com.ecamt35.messageservice.model.entity.ConversationMember;
+import com.ecamt35.messageservice.model.entity.ImGroup;
 import com.ecamt35.messageservice.model.entity.Message;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -24,6 +28,7 @@ public class MessageCommandService {
     private final ConversationMemberMapper memberMapper;
     private final MessageMapper messageMapper;
     private final DeliveryService deliveryService;
+    private final ImGroupMapper imGroupMapper;
 
     /**
      * 发送消息，获取会话ID（单聊创建/群聊传入）、分配 seq、持久化消息（幂等）、并投递给在线成员设备。
@@ -61,12 +66,12 @@ public class MessageCommandService {
         }
 
         Long convId;
+        Conversation conv = null;
         if (chatType == 0) {
             // private
             if (receiverId == null) {
                 throw new IllegalArgumentException("receiverId required for private");
             }
-            // todo 判断receiverId是否合法
             // 必须存在会话双方成员
             convId = conversationService.getOrCreatePrivateConversationIdOrThrow(senderId, receiverId);
         } else {
@@ -76,10 +81,30 @@ public class MessageCommandService {
             }
             convId = conversationId;
 
+            conv = conversationService.selectById(convId);
+            if (conv == null || conv.getType() == null || conv.getType() != 1 || conv.getGroupId() == null) {
+                throw new IllegalArgumentException("invalid group conversation");
+            }
             // 判断发送者是否有加入群组
             ConversationMember senderCM = memberMapper.findActive(convId, senderId);
-            // todo 判断是否被禁言
             if (senderCM == null) throw new IllegalStateException("not a group member");
+
+            // 群个人禁言优先于后续全员禁言判断
+            Long bannedUntil = senderCM.getSpeakBannedUntil();
+            if (bannedUntil != null && bannedUntil > System.currentTimeMillis()) {
+                throw new IllegalStateException("you are muted in this group");
+            }
+
+            ImGroup group = imGroupMapper.selectById(conv.getGroupId());
+            if (group == null || group.getDeleted() != null && group.getDeleted() == 1) {
+                throw new IllegalStateException("group not found");
+            }
+            if (group.getMuteAll() != null
+                    && group.getMuteAll() == 1
+                    && (senderCM.getRole() == null || senderCM.getRole() < RelationStatusConstant.ROLE_ADMIN)) {
+                // 全员禁言下仅管理员/群主可发言
+                throw new IllegalStateException("group is muted for all members");
+            }
         }
 
         long seq = cursorService.nextSeq(convId);
@@ -110,6 +135,10 @@ public class MessageCommandService {
 
         // 投递前拿成员列表
         // todo 群聊后续可优化只投在线成员
+        Long groupId = null;
+        if (conv != null) {
+            groupId = conv.getGroupId();
+        }
         List<ConversationMember> members = memberMapper.listActiveMembers(convId);
         for (ConversationMember m : members) {
             Long uid = m.getUserId();
@@ -126,6 +155,7 @@ public class MessageCommandService {
                     msg.getSendTime(),
                     null,
                     convId,
+                    groupId,
                     seq
             );
             deliveryService.deliverToUserDevices(bo);

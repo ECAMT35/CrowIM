@@ -131,6 +131,7 @@ public class DeliveryService {
                     sendMessageBo.getSendTime(),
                     deviceId,
                     sendMessageBo.getConversationId(),
+                    sendMessageBo.getGroupId(),
                     sendMessageBo.getSeq()
             );
 

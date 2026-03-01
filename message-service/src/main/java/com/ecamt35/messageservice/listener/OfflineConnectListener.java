@@ -58,7 +58,6 @@ public class OfflineConnectListener {
 
             log.info("Closing old channel for userId={}, deviceId={}, sessionId={}", notification.getUserId(), notification.getDeviceId(), localSid);
 
-            userChannelRegistry.unregisterAsync(ch);
             ch.close();
         });
 

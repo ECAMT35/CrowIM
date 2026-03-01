@@ -19,6 +19,13 @@ public interface ConversationMapper extends BaseMapper<Conversation> {
     Conversation findPrivate(@Param("a") Long a, @Param("b") Long b);
 
     @Select("""
+            select id,type,peer_a,peer_b,group_id,create_time,update_time,deleted
+            from conversation
+            where type=1 and group_id=#{groupId} and deleted=0
+            """)
+    Conversation findGroupConversationByGroupId(@Param("groupId") Long groupId);
+
+    @Select("""
             select id
             from conversation
             where deleted=0 and (

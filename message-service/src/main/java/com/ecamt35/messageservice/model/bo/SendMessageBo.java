@@ -17,5 +17,6 @@ public class SendMessageBo {
     private Long sendTime;
     private String receiverDeviceId;
     private Long conversationId;
+    private Long groupId;
     private Long seq;
 }
