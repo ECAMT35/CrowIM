@@ -1,6 +1,7 @@
 # 关系域文档（主）
 
 本文档为关系域唯一主文档，覆盖协议说明、测试 JSON 用例、参数说明和事件字段。
+更新时间：2026-03-08 23:10
 
 ## 1. 通用协议
 
@@ -32,7 +33,7 @@
   "data": {
     "requestId": "req-unique-id",
     "op": "OP_CODE",
-    "code": 0,
+    "code": 200,
     "message": "ok",
     "data": {}
   }
@@ -49,7 +50,7 @@
 客户端建议：
 
 - 以 `requestId` 做应答关联和幂等去重。
-- 以 `code != 0` 判定失败，不要仅依赖超时重试。
+- 以 `code == 200` 判定成功，其余均视为失败，不要仅依赖超时重试。
 
 ## 2. 操作码总览
 
@@ -623,7 +624,7 @@
 - `GROUP_MEMBER_JOINED`：`groupId`, `userId`, `auto`
 - `GROUP_JOIN_APPLY_CREATED`：`applyId`, `groupId`, `applicantId`
 - `GROUP_JOIN_APPLY_DECIDED`：`applyId`, `groupId`, `applicantId`, `decisionUserId`, `approve`
-- `GROUP_MEMBER_KICKED`：`groupId`, `operatorId`, `targetUserId`
+- `GROUP_MEMBER_KICKED`：`groupId`, `operatorId`, `targetUserId`（只投递给群主/管理员和被踢成员，不广播全部成员）
 - `GROUP_ADMIN_SET`：`groupId`, `targetUserId`
 - `GROUP_ADMIN_UNSET`：`groupId`, `targetUserId`
 - `GROUP_MUTE_ALL_SET`：`groupId`, `muteAll`

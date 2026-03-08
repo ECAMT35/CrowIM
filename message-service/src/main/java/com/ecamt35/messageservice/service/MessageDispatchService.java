@@ -63,6 +63,9 @@ public class MessageDispatchService {
 
         // 根据会话成员进行实际投递，发送者自己不回推。
         List<ConversationMember> members = memberMapper.listActiveMembers(convId);
+        if (members == null || members.isEmpty()) {
+            return;
+        }
         for (ConversationMember m : members) {
             Long uid = m.getUserId();
             if (uid == null || uid.equals(senderId)) {
@@ -82,7 +85,12 @@ public class MessageDispatchService {
                     dispatchBo.getGroupId(),
                     dispatchBo.getSeq()
             );
-            deliveryService.deliverToUserDevices(bo);
+            try {
+                deliveryService.deliverToUserDevices(bo);
+            } catch (Exception ex) {
+                log.error("Deliver message failed, messageId={}, conversationId={}, targetUserId={}",
+                        dispatchBo.getMessageId(), convId, uid, ex);
+            }
         }
     }
 }

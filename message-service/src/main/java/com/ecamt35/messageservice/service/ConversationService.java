@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.util.List;
@@ -29,6 +30,14 @@ public class ConversationService {
     private final Snowflake snowflake;
     private final RelationPermissionService relationPermissionService;
 
+    /**
+     * 获取或创建私聊会话
+     *
+     * @param senderId   发送者用户ID
+     * @param receiverId 接收者用户ID
+     * @return 私聊会话ID
+     */
+    @Transactional(rollbackFor = Exception.class)
     public Long getOrCreatePrivateConversationIdOrThrow(Long senderId, Long receiverId) {
 
         // 私聊权限链路：先黑名单，再好友，最后陌生人开关（默认关闭）

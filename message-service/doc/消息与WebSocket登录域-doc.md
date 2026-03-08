@@ -1,52 +1,73 @@
-# 消息与 WebSocket 登录域 - 链路检查与接口文档
+# 消息与 WebSocket 登录域文档（主）
 
-更新时间：2026-03-08
+更新时间：2026-03-08 23:10
 
 ## 1. 范围
 
 - WebSocket 登录/连接管理
-- 消息发送、投递、拉取、已读、摘要
+- 消息发送、异步分发、在线投递
+- 消息拉取、已读游标、会话摘要
 
-## 2. 链路总览
+## 2. 当前链路总览（以代码实现为准）
 
 ### 2.1 WebSocket 登录链路
 
-1. 客户端连接后，服务端在 `handlerAdded` 返回欢迎文本。
-2. 未注册状态下，`WebSocketFrameHandler.handleRegistration` 解析 `CommonPacketDto.data` 中 `userId/deviceId`。
+1. 客户端建立连接后，`WebSocketFrameHandler.handlerAdded` 返回欢迎文本。
+2. 未注册状态下，`handleRegistration` 解析 `data.userId/deviceId`。
 3. 调用 `UserChannelRegistry.registerUserAsync`：
     - eventLoop 写入 channel attrs
-    - 虚拟线程获取分布式锁 + 写 Redis `ws:online:{userId}:{deviceId}`
-    - 本地映射 `deviceChannels`
-    - 必要时 MQ 通知旧节点踢线
-4. 注册成功返回 `REGISTER_SUCCESS` 文本。
+    - 虚拟线程获取分布式锁并写 Redis 路由 `ws:online:{userId}:{deviceId}`
+    - 本地缓存 `deviceChannels` 建立映射
+    - 必要时通知旧节点踢线
+4. 注册成功返回文本帧 `REGISTER_SUCCESS`。
 
-### 2.2 消息发送链路
+### 2.2 消息发送与 ACK 链路
 
-1. 客户端发 `packetType=100`（`CLIENT_REQUEST_SENT`）。
-2. `ClientSendMessageHandler` 解析并调用 `MessageCommandService.sendMessage`。
-3. `MessageCommandService`：
-    - 幂等检查（`clientMsgId + senderId`）
+1. 客户端发送 `packetType=100`（`CLIENT_REQUEST_SENT`）。
+2. `ClientSendMessageHandler` 做基础校验（含空 `packet/data` 防御）并调用 `MessageCommandService.sendMessage`。
+3. `MessageCommandService` 执行：
+    - 幂等检查（`senderId + clientMsgId`）
     - 单聊会话校验/创建，或群成员与禁言校验
-    - 分配 `seq`，写 `message`
-    - 拉取会话成员并调用 `DeliveryService.deliverToUserDevices`
-4. 给发送端回 `packetType=201`（`SERVER_ACK_SENT`）。
+    - 分配会话内 `seq`
+    - 消息落库
+    - 发布 `MessageDispatchBo` 到异步分发队列
+4. 发送端收到 `packetType=201`（`SERVER_ACK_SENT`）。
 
-### 2.3 投递链路
+说明：`SERVER_ACK_SENT` 语义是“消息已持久化并已尝试发布分发任务”，不等待全员在线投递完成。
 
-1. `DeliveryService` 查 `user:devices:{userId}` 设备集合。
-2. 每台设备查 `ws:online:{userId}:{deviceId}` 的 `node/sessionId`。
-3. 本节点直接写 channel；跨节点转 MQ（`websocket-message-{node}`）。
-4. 对端节点由 `MessagePushListener` 消费后再次 `deliverToUserDevices`。
+### 2.3 异步分发与在线投递链路
 
-### 2.4 拉取/已读链路
+1. `MessageDispatchListener` 消费分发队列。
+2. `MessageDispatchService.handleDispatch` 查询会话 active 成员，跳过发送者。
+3. 按成员调用 `DeliveryService.deliverToUserDevices`：
+    - 每个成员投递独立 `try-catch`，单成员失败不影响其他成员。
+4. `DeliveryService`：
+    - 读取 `user:devices:{userId}` 设备集合
+    - 读取 `ws:online:{userId}:{deviceId}` 的 `node/sessionId`
+    - 本节点直接写 channel
+    - 跨节点转发到 `websocket-message-{node}`，由 `MessagePushListener` 消费后继续投递
 
-- `CLIENT_PULL_MESSAGES(103)` -> `MessageService.pullMessages` 按 seq 区间拉取。
-- `CLIENT_ACK_READ(101)` -> `CursorService.advanceRead` 推进读游标。
-- `CLIENT_PULL_SUMMARY(102)` -> `SummaryService.buildSummary` 构建会话摘要。
+### 2.4 拉取/已读/摘要链路
 
-## 5. 消息域与登录域接口示例
+- `CLIENT_PULL_MESSAGES(103)` -> `MessageService.pullMessages`
+    - 按 `seq` 分页拉取
+    - `upperBoundSeq` 支持 Redis 上界 + DB 纠偏
+- `CLIENT_ACK_READ(101)` -> `CursorService.advanceRead`
+    - Redis 优先推进 read 游标，DB 兜底
+- `CLIENT_PULL_SUMMARY(102)` -> `SummaryService.buildSummary`
+    - 调用 `CursorService.batchGetLastSeq/batchGetRead`
+    - Redis 批量读取 + DB 批量兜底，避免 N+1
 
-说明：以下是当前协议使用方式与建议字段，均为 JSON 示例。
+## 3. null
+
+## 4. 一致性与失败语义
+
+- 写入一致性：消息落库是强一致前提，ACK 基于落库成功返回。
+- 推送一致性：在线推送是最终一致，客户端需依赖 pull 做补齐。
+- 分发失败处理：单成员投递失败仅影响该成员当次实时推送，不影响其他成员。
+- 已知保留项：尚未引入 outbox，仍存在“落库成功但分发任务发布失败”的窗口（可由 pull 补偿）。
+
+## 5. 接口 JSON 用例
 
 ### 5.1 登录注册（WebSocket 首包）
 
@@ -70,7 +91,6 @@
 
 参数说明：
 
-- `packetType`：当前实现未强校验该值。
 - `data.userId`：当前登录用户 ID。
 - `data.deviceId`：设备唯一标识。
 
@@ -224,7 +244,7 @@ ACK 响应 `SERVER_ACK_SENT(201)`：
 
 参数说明：
 
-- 返回 `data` 为 `convId -> {lastSeq, readSeq, unread}` 的映射。
+- 返回 `data` 为 `convId -> {lastSeq, readSeq, unread}` 映射。
 
 ### 5.6 拉取消息 `CLIENT_PULL_MESSAGES(103)`
 
@@ -278,19 +298,26 @@ ACK 响应 `SERVER_ACK_SENT(201)`：
 
 ### 5.7 错误响应
 
-示例：
+示例 1（参数错误）：
 
 ```json
 {
   "packetType": 400,
-  "data": {
-    "reason": "invalid message format"
-  }
+  "data": "receiverId required for private"
+}
+```
+
+示例 2（权限不足）：
+
+```json
+{
+  "packetType": 401,
+  "data": "not a group member"
 }
 ```
 
 参数说明：
 
-- `packetType=400`：请求格式不合法。
+- `packetType=400`：请求格式或参数不合法。
 - `packetType=401`：权限不足或未登录。
 
