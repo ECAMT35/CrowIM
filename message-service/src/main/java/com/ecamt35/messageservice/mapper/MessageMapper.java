@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface MessageMapper extends BaseMapper<Message> {
@@ -44,4 +45,9 @@ public interface MessageMapper extends BaseMapper<Message> {
                                  @Param("afterSeq") Long afterSeq,
                                  @Param("upperBoundSeq") Long upperBoundSeq,
                                  @Param("limit") Integer limit);
+
+    /**
+     * 批量查询会话的最大 seq，减少 SUMMARY 场景逐会话查询压力。
+     */
+    List<Map<String, Object>> batchFindMaxSeqByConvIds(@Param("convIds") List<Long> convIds);
 }

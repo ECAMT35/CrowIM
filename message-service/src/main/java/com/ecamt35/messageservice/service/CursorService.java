@@ -1,5 +1,6 @@
 package com.ecamt35.messageservice.service;
 
+import cn.hutool.core.convert.Convert;
 import com.ecamt35.messageservice.mapper.ConversationMemberMapper;
 import com.ecamt35.messageservice.mapper.MessageMapper;
 import com.ecamt35.messageservice.model.entity.ConversationMember;
@@ -8,11 +9,11 @@ import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
 
-import java.util.Collections;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 @Service
@@ -23,7 +24,7 @@ public class CursorService {
     private static final String CURSOR_TTL_SECONDS = String.valueOf(24 * 60 * 60 * 30);
     private static final long CURSOR_TTL_SECONDS_LONG = 24L * 60 * 60 * 30;
 
-    private final RedisTemplate<String, String> redisTemplate;
+    private final StringRedisTemplate redisTemplate;
     private final MessageMapper messageMapper;
     private final ConversationMemberMapper memberMapper;
     private final RedissonClient redissonClient;
@@ -34,7 +35,7 @@ public class CursorService {
     private final DefaultRedisScript<Long> maxHsetScript;
 
     public CursorService(
-            RedisTemplate<String, String> redisTemplate,
+            StringRedisTemplate redisTemplate,
             MessageMapper messageMapper,
             ConversationMemberMapper memberMapper,
             RedissonClient redissonClient,
@@ -163,7 +164,7 @@ public class CursorService {
         // Redis 读
         try {
             String v = redisTemplate.opsForValue().get(key);
-            if (v != null) return Long.parseLong(v);
+            if (v != null) return Math.max(0L, Long.parseLong(v));
         } catch (Exception ignore) {
         }
 
@@ -185,7 +186,7 @@ public class CursorService {
             // 锁内 double-check
             try {
                 String again = redisTemplate.opsForValue().get(key);
-                if (again != null) return Long.parseLong(again);
+                if (again != null) return Math.max(0L, Long.parseLong(again));
             } catch (Exception ignore) {
             }
 
@@ -281,8 +282,12 @@ public class CursorService {
 
         // Redis 读
         try {
-            Object v = redisTemplate.opsForHash().get(readHashKey(userId), String.valueOf(convId));
-            if (v != null) return Long.parseLong(String.valueOf(v));
+            String hashKey = readHashKey(userId);
+            String field = String.valueOf(convId);
+            Object v = redisTemplate.opsForHash().get(hashKey, field);
+            if (v != null) {
+                return Math.max(0L, Long.parseLong(String.valueOf(v)));
+            }
         } catch (Exception ignore) {
         }
 
@@ -300,8 +305,12 @@ public class CursorService {
 
             // 锁内 double-check
             try {
-                Object again = redisTemplate.opsForHash().get(readHashKey(userId), String.valueOf(convId));
-                if (again != null) return Long.parseLong(String.valueOf(again));
+                String hashKey = readHashKey(userId);
+                String field = String.valueOf(convId);
+                Object again = redisTemplate.opsForHash().get(hashKey, field);
+                if (again != null) {
+                    return Math.max(0L, Long.parseLong(String.valueOf(again)));
+                }
             } catch (Exception ignore) {
             }
 
@@ -326,5 +335,155 @@ public class CursorService {
                 lock.unlock();
             }
         }
+    }
+
+    /**
+     * 批量获取多个会话的 lastSeq。
+     * 优先 Redis 批量读取，miss 再批量查 DB，并回填 Redis。
+     *
+     * @param convIds 会话 ID 列表
+     * @return convId -> lastSeq 映射
+     */
+    public Map<Long, Long> batchGetLastSeq(List<Long> convIds) {
+        Map<Long, Long> result = new HashMap<>();
+        if (convIds == null || convIds.isEmpty()) {
+            return result;
+        }
+
+        List<String> keys = new ArrayList<>(convIds.size());
+        for (Long convId : convIds) {
+            keys.add(lastSeqKey(convId));
+        }
+
+        List<String> values = null;
+        try {
+            values = redisTemplate.opsForValue().multiGet(keys);
+        } catch (Exception ignore) {
+        }
+
+        Set<Long> misses = new HashSet<>();
+        for (int i = 0; i < convIds.size(); i++) {
+            Long convId = convIds.get(i);
+            String raw = (values != null && i < values.size()) ? values.get(i) : null;
+            if (raw == null) {
+                misses.add(convId);
+                continue;
+            }
+            try {
+                result.put(convId, Math.max(0L, Long.parseLong(raw)));
+            } catch (Exception ignore) {
+                misses.add(convId);
+            }
+        }
+
+        if (!misses.isEmpty()) {
+            List<Map<String, Object>> rows = messageMapper.batchFindMaxSeqByConvIds(new ArrayList<>(misses));
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    Long convId = Convert.toLong(row.get("convId"));
+                    Long maxSeq = Convert.toLong(row.get("maxSeq"));
+                    if (convId == null) {
+                        continue;
+                    }
+                    result.put(convId, normalizeNonNegative(maxSeq));
+                }
+            }
+        }
+
+        for (Long convId : misses) {
+            result.putIfAbsent(convId, 0L);
+        }
+
+        for (Long convId : misses) {
+            try {
+                redisTemplate.opsForValue().set(lastSeqKey(convId),
+                        String.valueOf(result.getOrDefault(convId, 0L)),
+                        CURSOR_TTL_SECONDS_LONG,
+                        TimeUnit.SECONDS);
+            } catch (Exception ignore) {
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 批量获取用户在多个会话中的 readSeq。
+     * 优先 Redis 批量读取，miss 再批量查 DB，并回填 Redis。
+     *
+     * @param userId  用户 ID
+     * @param convIds 会话 ID 列表
+     * @return convId -> readSeq 映射
+     */
+    public Map<Long, Long> batchGetRead(Long userId, List<Long> convIds) {
+        Map<Long, Long> result = new HashMap<>();
+        if (userId == null || convIds == null || convIds.isEmpty()) {
+            return result;
+        }
+
+        String hashKey = readHashKey(userId);
+        List<String> fields = new ArrayList<>(convIds.size());
+        for (Long convId : convIds) {
+            fields.add(String.valueOf(convId));
+        }
+
+        List<Object> values = null;
+        try {
+            values = redisTemplate.opsForHash().multiGet(hashKey, new ArrayList<>(fields));
+        } catch (Exception ignore) {
+        }
+
+        Set<Long> misses = new HashSet<>();
+        for (int i = 0; i < convIds.size(); i++) {
+            Long convId = convIds.get(i);
+            String field = String.valueOf(convId);
+            Object raw = (values != null && i < values.size()) ? values.get(i) : null;
+            if (raw == null) {
+                misses.add(convId);
+                continue;
+            }
+            try {
+                result.put(convId, Math.max(0L, Long.parseLong(String.valueOf(raw))));
+            } catch (Exception ignore) {
+                misses.add(convId);
+            }
+        }
+
+        if (!misses.isEmpty()) {
+            List<Map<String, Object>> rows = memberMapper.batchFindReadSeqByUserAndConvIds(userId, new ArrayList<>(misses));
+            if (rows != null) {
+                for (Map<String, Object> row : rows) {
+                    Long convId = Convert.toLong(row.get("convId"));
+                    Long readSeq = Convert.toLong(row.get("readSeq"));
+                    if (convId == null) {
+                        continue;
+                    }
+                    result.put(convId, normalizeNonNegative(readSeq));
+                }
+            }
+        }
+
+        for (Long convId : misses) {
+            result.putIfAbsent(convId, 0L);
+        }
+
+        Map<String, String> refill = new HashMap<>();
+        for (Long convId : misses) {
+            refill.put(String.valueOf(convId), String.valueOf(result.getOrDefault(convId, 0L)));
+        }
+        if (!refill.isEmpty()) {
+            try {
+                redisTemplate.opsForHash().putAll(hashKey, refill);
+                redisTemplate.expire(hashKey, CURSOR_TTL_SECONDS_LONG, TimeUnit.SECONDS);
+            } catch (Exception ignore) {
+            }
+        }
+        return result;
+    }
+
+    private long normalizeNonNegative(Long value) {
+        if (value == null) {
+            return 0L;
+        }
+        return Math.max(value, 0L);
     }
 }

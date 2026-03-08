@@ -21,17 +21,23 @@ public class SummaryService {
      * - readSeq：用户已读游标（Redis 优先，DB last_read_seq 兜底，可回填）
      * - unread：max(0, lastSeq - readSeq)
      *
-     * @return convId -> {lastSeq, readSeq, unread} 的映射
+     * @param userId 用户 ID
+     * @return convId -> {lastSeq, readSeq, unread}
      */
     public Map<Long, Map<String, Long>> buildSummary(Long userId) {
         // 获取用户参与的会话 ID 列表
         List<Long> convIds = conversationService.listConversationIdsForUser(userId);
-        if (convIds == null || convIds.isEmpty()) return Collections.emptyMap();
+        if (convIds == null || convIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, Long> lastSeqMap = cursorService.batchGetLastSeq(convIds);
+        Map<Long, Long> readSeqMap = cursorService.batchGetRead(userId, convIds);
 
         Map<Long, Map<String, Long>> res = new HashMap<>();
         for (Long convId : convIds) {
-            long last = cursorService.getLastSeq(convId);
-            long read = cursorService.getRead(userId, convId);
+            long last = lastSeqMap.getOrDefault(convId, 0L);
+            long read = readSeqMap.getOrDefault(convId, 0L);
 
             Map<String, Long> one = new HashMap<>();
             one.put("lastSeq", last);

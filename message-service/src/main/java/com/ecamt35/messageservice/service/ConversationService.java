@@ -10,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
 import java.util.List;
@@ -27,21 +28,25 @@ public class ConversationService {
     private final ConversationMemberMapper memberMapper;
     private final RedisCacheClient cacheClient;
     private final Snowflake snowflake;
+    private final RelationPermissionService relationPermissionService;
 
+    /**
+     * 获取或创建私聊会话
+     *
+     * @param senderId   发送者用户ID
+     * @param receiverId 接收者用户ID
+     * @return 私聊会话ID
+     */
+    @Transactional(rollbackFor = Exception.class)
     public Long getOrCreatePrivateConversationIdOrThrow(Long senderId, Long receiverId) {
 
-        // 权限校验
-        // 是否被对方拉黑
-        if (isBlacklisted(receiverId, senderId)) {
+        // 私聊权限链路：先黑名单，再好友，最后陌生人开关（默认关闭）
+        if (relationPermissionService.isBlacklisted(receiverId, senderId)) {
             throw new IllegalStateException("blocked by receiver");
         }
-        // 是否允许陌生人发起对话
-        boolean allowStranger = isAllowStrangerConversation(receiverId);
-        // 不允许陌生人
-        if (!allowStranger) {
-            if (!isFriend(senderId, receiverId)) {
-                throw new IllegalStateException("not friends and stranger chat disabled");
-            }
+        if (!relationPermissionService.isMutualFriend(senderId, receiverId)
+                && !relationPermissionService.isAllowStrangerConversation(receiverId)) {
+            throw new IllegalStateException("not friends and stranger chat disabled");
         }
 
         // 允许陌生人/是好友->conversation_member检查
@@ -105,9 +110,14 @@ public class ConversationService {
         }
 
         if (any != null && any.getDeleted() != null && any.getDeleted() == 1) {
-            any.setDeleted(0);
-            memberMapper.updateById(any);
-            return true;
+            int restored = memberMapper.restoreDeletedById(any.getId(), 1);
+            if (restored > 0) {
+                return true;
+            }
+            if (memberMapper.findActive(convId, userId) != null) {
+                return true;
+            }
+            throw new IllegalStateException("restore conversation member failed");
         }
 
         ConversationMember m = new ConversationMember();
@@ -118,6 +128,7 @@ public class ConversationService {
         m.setRole(1);
         m.setMute(0);
         m.setLastReadSeq(0L);
+        m.setSpeakBannedUntil(0L);
         m.setDeleted(0);
 
         try {
@@ -133,31 +144,6 @@ public class ConversationService {
      */
     public List<Long> listConversationIdsForUser(Long userId) {
         return listConversationIdsForUserCached(userId);
-    }
-
-    /**
-     * 是否在receiver黑名单
-     */
-    private boolean isBlacklisted(Long receiverId, Long senderId) {
-        // todo: Redis set / DB
-        return false;
-    }
-
-    /**
-     * 是否好友
-     */
-    private boolean isFriend(Long senderId, Long receiverId) {
-        // todo: Redis set / DB
-        return false;
-    }
-
-    /**
-     * receiver 是否允许作为陌生人发起对话
-     */
-    private boolean isAllowStrangerConversation(Long receiverId) {
-        // todo: privacy setting
-//        return false;
-        return true;
     }
 
     /**

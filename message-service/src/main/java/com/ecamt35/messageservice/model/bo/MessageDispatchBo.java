@@ -4,19 +4,20 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+/**
+ * 消息异步分发任务。
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class SendMessageBo {
-    private Long targetUserId;
-    private String message;
-    private Integer chatType;
-    private Integer messageType;
-    private Long senderId;
+public class MessageDispatchBo {
     private Long messageId;
-    private Long sendTime;
-    private String receiverDeviceId;
     private Long conversationId;
+    private Integer chatType;
+    private Integer msgType;
+    private Long senderId;
+    private String content;
+    private Long sendTime;
     private Long groupId;
     private Long seq;
 }

@@ -17,6 +17,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -93,9 +94,10 @@ public class DeliveryService {
 
         String wsOnlineKey = userChannelRegistry.wsOnlineKey(targetUserId, deviceId);
 
-        // todo lua
-        Object nodeObj = redisTemplate.opsForHash().get(wsOnlineKey, "node");
-        Object sidObj = redisTemplate.opsForHash().get(wsOnlineKey, "sessionId");
+        // 同一个 key 一次 HMGET 拿齐路由信息，减少 Redis RTT。
+        List<Object> route = redisTemplate.opsForHash().multiGet(wsOnlineKey, List.of("node", "sessionId"));
+        Object nodeObj = (route == null || route.isEmpty()) ? null : route.get(0);
+        Object sidObj = (route == null || route.size() < 2) ? null : route.get(1);
         if (nodeObj == null) {
             // 说明该 deviceId 不在线
             // 不在线不推
@@ -131,6 +133,7 @@ public class DeliveryService {
                     sendMessageBo.getSendTime(),
                     deviceId,
                     sendMessageBo.getConversationId(),
+                    sendMessageBo.getGroupId(),
                     sendMessageBo.getSeq()
             );
 

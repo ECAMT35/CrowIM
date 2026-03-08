@@ -10,11 +10,13 @@ import com.ecamt35.messageservice.service.MessageCommandService;
 import com.ecamt35.messageservice.websocket.dispatch.WsContext;
 import com.ecamt35.messageservice.websocket.handlers.PacketHandler;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
 
 @Component
+@Slf4j
 @RequiredArgsConstructor
 public class ClientSendMessageHandler implements PacketHandler {
 
@@ -27,6 +29,10 @@ public class ClientSendMessageHandler implements PacketHandler {
 
     @Override
     public void handle(WsContext ctx, CommonPacketDto packet) {
+        if (packet == null || packet.getData() == null || packet.getData().isEmpty()) {
+            ctx.send(new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, null));
+            return;
+        }
         Map<String, Object> data = packet.getData();
 
         String content = Convert.toStr(data.get("content"));
@@ -65,8 +71,14 @@ public class ClientSendMessageHandler implements PacketHandler {
             msg = commandService.sendMessage(
                     senderId, receiverId, conversationId, clientMsgId, chatType, msgType, content
             );
-        } catch (IllegalStateException ex) {
-            ctx.send(new PushVo(PacketTypeConstant.INSUFFICIENT_PERMISSIONS, ex.getMessage()));
+        } catch (Exception ex) {
+            log.warn("Send message failed, senderId={}, clientMsgId={}, chatType={}, conversationId={}",
+                    senderId, clientMsgId, chatType, conversationId, ex);
+            if (ex instanceof IllegalStateException) {
+                ctx.send(new PushVo(PacketTypeConstant.INSUFFICIENT_PERMISSIONS, ex.getMessage()));
+                return;
+            }
+            ctx.send(new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, ex.getMessage()));
             return;
         }
 

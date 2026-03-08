@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ecamt35.messageservice.mapper.GroupJoinApplyMapper">
+
+    <!-- 查询管理员可见的入群申请列表，支持按群和状态过滤 -->
+    <select id="listForManager" resultType="com.ecamt35.messageservice.model.entity.GroupJoinApply">
+        select gja.id,gja.group_id,gja.applicant_id,gja.status,gja.apply_message,gja.decision_user_id,gja.decision_time,gja.create_time,gja.update_time,gja.deleted
+        from group_join_apply gja
+        join conversation c on c.group_id = gja.group_id and c.type = 1 and c.deleted = 0
+        join conversation_member cm on cm.conversation_id = c.id and cm.user_id = #{userId} and cm.deleted = 0 and cm.role &gt;= 2
+        where gja.deleted = 0
+        <if test="groupId != null">
+            and gja.group_id = #{groupId}
+        </if>
+        <if test="status != null">
+            and gja.status = #{status}
+        </if>
+        order by gja.id desc
+        limit #{limit} offset #{offset}
+    </select>
+
+</mapper>

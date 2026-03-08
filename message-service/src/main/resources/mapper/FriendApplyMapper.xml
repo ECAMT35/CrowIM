@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ecamt35.messageservice.mapper.FriendApplyMapper">
+
+    <!-- 分页查询目标用户收到的好友申请，支持按状态筛选 -->
+    <select id="listByTarget" resultType="com.ecamt35.messageservice.model.entity.FriendApply">
+        select id,applicant_id,target_id,status,apply_message,decision_user_id,decision_time,create_time,update_time,deleted
+        from friend_apply
+        where target_id=#{targetId} and deleted=0
+        <if test="status != null">
+            and status=#{status}
+        </if>
+        order by id desc
+        limit #{limit} offset #{offset}
+    </select>
+
+</mapper>

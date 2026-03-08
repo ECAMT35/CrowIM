@@ -40,6 +40,10 @@ public class ConversationMember {
      * 该成员已读到的最大seq（read游标）
      */
     private Long lastReadSeq;
+    /**
+     * 个人禁言截止时间戳（毫秒），0表示未禁言
+     */
+    private Long speakBannedUntil;
 
     private Date joinTime;
 
