@@ -33,23 +33,6 @@ public interface GroupJoinApplyMapper extends BaseMapper<GroupJoinApply> {
                                @Param("decisionTime") Date decisionTime,
                                @Param("expectStatus") Integer expectStatus);
 
-    @Select("""
-            <script>
-            select gja.id,gja.group_id,gja.applicant_id,gja.status,gja.apply_message,gja.decision_user_id,gja.decision_time,gja.create_time,gja.update_time,gja.deleted
-            from group_join_apply gja
-            join conversation c on c.group_id = gja.group_id and c.type = 1 and c.deleted = 0
-            join conversation_member cm on cm.conversation_id = c.id and cm.user_id = #{userId} and cm.deleted = 0 and cm.role &gt;= 2
-            where gja.deleted = 0
-            <if test="groupId != null">
-                and gja.group_id = #{groupId}
-            </if>
-            <if test="status != null">
-                and gja.status = #{status}
-            </if>
-            order by gja.id desc
-            limit #{limit} offset #{offset}
-            </script>
-            """)
     List<GroupJoinApply> listForManager(@Param("userId") Long userId,
                                         @Param("groupId") Long groupId,
                                         @Param("status") Integer status,

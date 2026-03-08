@@ -33,18 +33,6 @@ public interface FriendApplyMapper extends BaseMapper<FriendApply> {
                                @Param("decisionTime") Date decisionTime,
                                @Param("expectStatus") Integer expectStatus);
 
-    @Select("""
-            <script>
-            select id,applicant_id,target_id,status,apply_message,decision_user_id,decision_time,create_time,update_time,deleted
-            from friend_apply
-            where target_id=#{targetId} and deleted=0
-            <if test="status != null">
-                and status=#{status}
-            </if>
-            order by id desc
-            limit #{limit} offset #{offset}
-            </script>
-            """)
     List<FriendApply> listByTarget(@Param("targetId") Long targetId,
                                    @Param("status") Integer status,
                                    @Param("limit") Integer limit,
