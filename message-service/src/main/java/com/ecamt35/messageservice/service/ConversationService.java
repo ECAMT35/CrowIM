@@ -28,7 +28,9 @@ public class ConversationService {
     private final ConversationMemberMapper memberMapper;
     private final RedisCacheClient cacheClient;
     private final Snowflake snowflake;
-    private final RelationPermissionService relationPermissionService;
+    private final BlacklistRelationService blacklistRelationService;
+    private final FriendRelationService friendRelationService;
+    private final PrivacyRelationService privacyRelationService;
 
     /**
      * 获取或创建私聊会话
@@ -41,11 +43,11 @@ public class ConversationService {
     public Long getOrCreatePrivateConversationIdOrThrow(Long senderId, Long receiverId) {
 
         // 私聊权限链路：先黑名单，再好友，最后陌生人开关（默认关闭）
-        if (relationPermissionService.isBlacklisted(receiverId, senderId)) {
+        if (blacklistRelationService.isBlacklisted(receiverId, senderId)) {
             throw new IllegalStateException("blocked by receiver");
         }
-        if (!relationPermissionService.isMutualFriend(senderId, receiverId)
-                && !relationPermissionService.isAllowStrangerConversation(receiverId)) {
+        if (!friendRelationService.isMutualFriend(senderId, receiverId)
+                && !privacyRelationService.isAllowStrangerConversation(receiverId)) {
             throw new IllegalStateException("not friends and stranger chat disabled");
         }
 

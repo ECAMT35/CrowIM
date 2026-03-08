@@ -1,7 +1,7 @@
-# 关系域文档（主）
+# 关系域文档
 
 本文档为关系域唯一主文档，覆盖协议说明、测试 JSON 用例、参数说明和事件字段。
-更新时间：2026-03-08 23:10
+更新时间：2026-03-09 00:33
 
 ## 1. 通用协议
 
@@ -637,3 +637,13 @@
 - `groupId` 与 `conversationId` 不是同一个字段：群域操作使用 `groupId`，会话层使用 `conversationId`。
 - 群角色：`1=member`, `2=admin`, `3=owner`。
 - 入群策略：`0=open`, `1=approval`。
+- 权限职责归位：
+  - 黑名单相关判断与缓存由 `BlacklistRelationService` 负责。
+  - 双向好友判断与好友缓存由 `FriendRelationService` 负责。
+  - 陌生人会话开关判断与隐私缓存由 `PrivacyRelationService` 负责。
+- 缓存键约定：
+  - 黑名单集合：`im:black:set:{userId}`。
+  - 好友集合：`im:friend:set:{userId}`。
+  - 隐私设置：`im:privacy:{userId}`。
+- 缓存联动约定：
+  - `BLACKLIST_ADD` 会删除双向好友边，并在事务提交后同时失效双方好友缓存与操作人黑名单缓存。

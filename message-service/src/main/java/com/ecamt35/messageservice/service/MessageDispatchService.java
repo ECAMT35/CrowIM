@@ -61,6 +61,7 @@ public class MessageDispatchService {
             return;
         }
 
+        // todo 群成员缓存
         // 根据会话成员进行实际投递，发送者自己不回推。
         List<ConversationMember> members = memberMapper.listActiveMembers(convId);
         if (members == null || members.isEmpty()) {

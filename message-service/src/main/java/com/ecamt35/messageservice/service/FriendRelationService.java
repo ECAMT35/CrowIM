@@ -2,25 +2,33 @@ package com.ecamt35.messageservice.service;
 
 import cn.hutool.core.convert.Convert;
 import cn.hutool.core.lang.Snowflake;
+import com.ecamt35.messageservice.constant.RelationCacheKeyConstant;
 import com.ecamt35.messageservice.constant.RelationStatusConstant;
 import com.ecamt35.messageservice.mapper.FriendApplyMapper;
 import com.ecamt35.messageservice.mapper.FriendLinkMapper;
 import com.ecamt35.messageservice.model.entity.FriendApply;
 import com.ecamt35.messageservice.model.entity.FriendLink;
+import com.ecamt35.messageservice.util.RedisCacheClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Duration;
 import java.util.*;
 
 @Service
 @RequiredArgsConstructor
 public class FriendRelationService {
 
+    private static final Duration FRIEND_SET_TTL = Duration.ofDays(7);
+
     private final Snowflake snowflake;
     private final FriendApplyMapper friendApplyMapper;
     private final FriendLinkMapper friendLinkMapper;
-    private final RelationPermissionService relationPermissionService;
+    private final BlacklistRelationService blacklistRelationService;
+    private final RedisCacheClient cacheClient;
     private final RelationEventPublisher relationEventPublisher;
 
     /**
@@ -33,10 +41,10 @@ public class FriendRelationService {
         if (userId.equals(targetId)) {
             throw new IllegalArgumentException("cannot apply self");
         }
-        if (relationPermissionService.isBlacklisted(targetId, userId)) {
+        if (blacklistRelationService.isBlacklisted(targetId, userId)) {
             throw new IllegalStateException("blocked by target user");
         }
-        if (relationPermissionService.isMutualFriend(userId, targetId)) {
+        if (isMutualFriend(userId, targetId)) {
             return Map.of("status", "already_friends");
         }
 
@@ -108,8 +116,8 @@ public class FriendRelationService {
         if (approve) {
             upsertFriendEdge(apply.getApplicantId(), apply.getTargetId());
             upsertFriendEdge(apply.getTargetId(), apply.getApplicantId());
-            relationPermissionService.evictFriendSet(apply.getApplicantId());
-            relationPermissionService.evictFriendSet(apply.getTargetId());
+            evictFriendSetAfterCommit(apply.getApplicantId());
+            evictFriendSetAfterCommit(apply.getTargetId());
         }
 
         relationEventPublisher.emitEvent(Set.of(apply.getApplicantId(), apply.getTargetId()), "FRIEND_APPLY_DECIDED", Map.of(
@@ -126,7 +134,7 @@ public class FriendRelationService {
      * 获取好友列表。
      */
     public Map<String, Object> friendList(Long userId) {
-        Set<Long> friendIds = friendLinkMapper.listActiveTargetIds(userId);
+        Set<Long> friendIds = listFriendTargetIds(userId);
         return Map.of("friendIds", friendIds == null ? Collections.emptySet() : friendIds);
     }
 
@@ -166,8 +174,8 @@ public class FriendRelationService {
         }
         friendLinkMapper.removeActive(userId, targetId);
         friendLinkMapper.removeActive(targetId, userId);
-        relationPermissionService.evictFriendSet(userId);
-        relationPermissionService.evictFriendSet(targetId);
+        evictFriendSetAfterCommit(userId);
+        evictFriendSetAfterCommit(targetId);
 
         relationEventPublisher.emitEvent(Set.of(targetId), "FRIEND_DELETED", Map.of(
                 "userId", userId,
@@ -175,6 +183,69 @@ public class FriendRelationService {
         ));
 
         return Map.of("removed", true);
+    }
+
+    /**
+     * 是否双向好友。
+     */
+    public boolean isMutualFriend(Long userA, Long userB) {
+        return hasFriendEdge(userA, userB) && hasFriendEdge(userB, userA);
+    }
+
+    /**
+     * 是否存在单向好友边。
+     */
+    public boolean hasFriendEdge(Long userId, Long targetId) {
+        if (userId == null || targetId == null) {
+            return false;
+        }
+        Set<Long> friendSet = listFriendTargetIds(userId);
+        return friendSet.contains(targetId);
+    }
+
+    /**
+     * 查询用户好友目标集合（缓存优先）。
+     */
+    public Set<Long> listFriendTargetIds(Long userId) {
+        if (userId == null) {
+            return Collections.emptySet();
+        }
+        return cacheClient.getOrLoadSet(
+                friendSetKey(userId),
+                FRIEND_SET_TTL,
+                Long.class,
+                () -> friendLinkMapper.listActiveTargetIds(userId)
+        );
+    }
+
+    /**
+     * 立即失效好友集合缓存。
+     */
+    public void evictFriendSet(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        cacheClient.evict(friendSetKey(userId));
+    }
+
+    /**
+     * 在事务提交后失效好友缓存，避免未提交事务触发脏回填。
+     */
+    public void evictFriendSetAfterCommit(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            Long uid = userId;
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    cacheClient.evict(friendSetKey(uid));
+                }
+            });
+            return;
+        }
+        cacheClient.evict(friendSetKey(userId));
     }
 
     private void upsertFriendEdge(Long userId, Long targetId) {
@@ -232,5 +303,9 @@ public class FriendRelationService {
             return 20;
         }
         return Math.min(pageSize, 100);
+    }
+
+    private String friendSetKey(Long userId) {
+        return RelationCacheKeyConstant.FRIEND_SET_PREFIX + userId;
     }
 }
