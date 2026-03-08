@@ -70,7 +70,7 @@
 
 参数说明：
 
-- `packetType`：当前实现未强校验该值，建议固定约定。
+- `packetType`：当前实现未强校验该值。
 - `data.userId`：当前登录用户 ID。
 - `data.deviceId`：设备唯一标识。
 

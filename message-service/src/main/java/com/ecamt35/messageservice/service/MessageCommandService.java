@@ -5,7 +5,7 @@ import com.ecamt35.messageservice.constant.RelationStatusConstant;
 import com.ecamt35.messageservice.mapper.ConversationMemberMapper;
 import com.ecamt35.messageservice.mapper.ImGroupMapper;
 import com.ecamt35.messageservice.mapper.MessageMapper;
-import com.ecamt35.messageservice.model.bo.SendMessageBo;
+import com.ecamt35.messageservice.model.bo.MessageDispatchBo;
 import com.ecamt35.messageservice.model.entity.Conversation;
 import com.ecamt35.messageservice.model.entity.ConversationMember;
 import com.ecamt35.messageservice.model.entity.ImGroup;
@@ -14,8 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
 
 @Service
 @Slf4j
@@ -27,11 +25,11 @@ public class MessageCommandService {
     private final ConversationService conversationService;
     private final ConversationMemberMapper memberMapper;
     private final MessageMapper messageMapper;
-    private final DeliveryService deliveryService;
+    private final MessageDispatchService messageDispatchService;
     private final ImGroupMapper imGroupMapper;
 
     /**
-     * 发送消息，获取会话ID（单聊创建/群聊传入）、分配 seq、持久化消息（幂等）、并投递给在线成员设备。
+     * 发送消息，获取会话ID（单聊创建/群聊传入）、分配 seq、持久化消息（幂等）并异步触发分发任务。
      *
      * @param senderId       发送者用户ID
      * @param receiverId     单聊接收者用户ID（chatType=0时必须）
@@ -133,32 +131,27 @@ public class MessageCommandService {
             throw e;
         }
 
-        // 投递前拿成员列表
-        // todo 群聊后续可优化只投在线成员
         Long groupId = null;
         if (conv != null) {
             groupId = conv.getGroupId();
         }
-        List<ConversationMember> members = memberMapper.listActiveMembers(convId);
-        for (ConversationMember m : members) {
-            Long uid = m.getUserId();
-            if (uid == null) continue;
-            if (uid.equals(senderId)) continue;
 
-            SendMessageBo bo = new SendMessageBo(
-                    uid,
-                    content,
-                    chatType,
-                    msgType,
-                    senderId,
-                    msg.getId(),
-                    msg.getSendTime(),
-                    null,
-                    convId,
-                    groupId,
-                    seq
-            );
-            deliveryService.deliverToUserDevices(bo);
+        // 落库后异步分发：发送链路只保证消息持久化与任务发布，不阻塞成员投递循环。
+        MessageDispatchBo dispatchBo = new MessageDispatchBo(
+                msg.getId(),
+                convId,
+                chatType,
+                msgType,
+                senderId,
+                content,
+                msg.getSendTime(),
+                groupId,
+                seq
+        );
+        try {
+            messageDispatchService.publishDispatchTask(dispatchBo);
+        } catch (Exception e) {
+            log.error("Publish message dispatch task failed, messageId={}, conversationId={}, reason={}", msg.getId(), convId, e.getMessage());
         }
 
         return msg;
