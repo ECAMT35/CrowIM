@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ecamt35.messageservice.mapper.MessageMapper">
+
+    <!-- 批量查询会话最新 seq，用于 SUMMARY 场景降 N+1 -->
+    <select id="batchFindMaxSeqByConvIds" resultType="map">
+        select conversation_id as convId, max(seq) as maxSeq
+        from message
+        where deleted = 0
+          and conversation_id in
+        <foreach collection="convIds" item="convId" open="(" separator="," close=")">
+            #{convId}
+        </foreach>
+        group by conversation_id
+    </select>
+
+</mapper>

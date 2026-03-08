@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ecamt35.messageservice.mapper.ConversationMemberMapper">
+
+    <!-- 批量查询用户在多个会话中的已读游标 -->
+    <select id="batchFindReadSeqByUserAndConvIds" resultType="map">
+        select conversation_id as convId, last_read_seq as readSeq
+        from conversation_member
+        where user_id = #{userId}
+          and deleted = 0
+          and conversation_id in
+        <foreach collection="convIds" item="convId" open="(" separator="," close=")">
+            #{convId}
+        </foreach>
+    </select>
+
+</mapper>

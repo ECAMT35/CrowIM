@@ -8,6 +8,7 @@ import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
 import java.util.List;
+import java.util.Map;
 
 @Mapper
 public interface ConversationMemberMapper extends BaseMapper<ConversationMember> {
@@ -83,4 +84,9 @@ public interface ConversationMemberMapper extends BaseMapper<ConversationMember>
             where id=#{id} and deleted=1
             """)
     int restoreDeletedById(@Param("id") Long id, @Param("role") Integer role);
+
+    /**
+     * 批量查询用户在多个会话中的已读游标，减少 SUMMARY 场景逐会话查询压力。
+     */
+    List<Map<String, Object>> batchFindReadSeqByUserAndConvIds(@Param("userId") Long userId, @Param("convIds") List<Long> convIds);
 }
