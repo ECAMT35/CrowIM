@@ -8,14 +8,20 @@ messagebak="message-service/src/main/resources/application.yaml.bak"
 user="user-service/src/main/resources/application.yaml"
 userbak="user-service/src/main/resources/application.yaml.bak"
 
+gateway="gateway/src/main/resources/application.yaml"
+gatewaybak="gateway/src/main/resources/application.yaml.bak"
+
 cp "$message" "$messagebak"
 cp "$user" "$userbak"
+cp "$gateway" "$gatewaybak"
 
 # 使用 sed 修改 application.yaml 文件
 sed -i -f remove_msg_rules.sed "$message"
 sed -i -f remove_msg_rules.sed "$user"
+sed -i -f remove_msg_rules.sed "$gateway"
 
 git add  "$message"
 git add  "$user"
+git add  "$gateway"
 
 echo "finish pre-commit"  

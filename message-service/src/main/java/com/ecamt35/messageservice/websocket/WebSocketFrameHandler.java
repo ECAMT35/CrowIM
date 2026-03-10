@@ -23,36 +23,54 @@ import java.util.concurrent.ExecutorService;
 @Slf4j
 public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocketFrame> {
 
-    private static final String REGISTER_SUCCESS = "REGISTER_SUCCESS";
-    private static final String WELCOME_MESSAGE = "Welcome! Please register with {userId, deviceId}";
-
     private final ObjectMapper objectMapper;
     private final UserChannelRegistry userChannelRegistry;
     private final ExecutorService virtualExecutor;
-
     private final MessageDispatcher dispatcher;
+    private final String nodeName;
 
     public WebSocketFrameHandler(ObjectMapper objectMapper,
                                  UserChannelRegistry userChannelRegistry,
                                  ExecutorService virtualExecutor,
-                                 MessageDispatcher dispatcher) {
+                                 MessageDispatcher dispatcher,
+                                 String nodeName) {
         this.objectMapper = objectMapper;
         this.userChannelRegistry = userChannelRegistry;
         this.virtualExecutor = virtualExecutor;
         this.dispatcher = dispatcher;
+        this.nodeName = nodeName;
     }
 
     /**
-     * 当新连接建立时触发，发送欢迎信息并初始化连接状态。
-     * 设置连接的注册状态为未注册，并向客户端发送响应报文。
+     * 当新连接加入 pipeline 时触发，初始化注册状态。
      *
      * @param ctx ChannelHandlerContext，包含连接上下文信息
      */
     @Override
     public void handlerAdded(ChannelHandlerContext ctx) {
-        ctx.channel().attr(UserChannelRegistry.REGISTERED_KEY).set(false);
-        ctx.writeAndFlush(new TextWebSocketFrame(WELCOME_MESSAGE));
         log.info("New connection from: {}", ctx.channel().remoteAddress());
+    }
+
+    /**
+     * 处理 WebSocket 生命周期事件。
+     * 在握手完成后立即回写当前节点名，便于客户端感知所连接节点。
+     *
+     * @param ctx ChannelHandlerContext，连接上下文
+     * @param evt 事件对象
+     * @throws Exception 异常
+     */
+    @Override
+    public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
+        if (evt instanceof WebSocketServerProtocolHandler.HandshakeComplete) {
+            Channel ch = ctx.channel();
+            ch.eventLoop().execute(() -> {
+                if (ch.isActive()) {
+                    ch.writeAndFlush(new TextWebSocketFrame(nodeName));
+                }
+            });
+            return;
+        }
+        super.userEventTriggered(ctx, evt);
     }
 
     /**
@@ -165,13 +183,7 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         Channel ch = ctx.channel();
         userChannelRegistry.registerUserAsync(userId, deviceId, ch)
                 .whenComplete((v, ex) -> {
-                    if (ex == null) {
-                        ch.eventLoop().execute(() -> {
-                            if (ch.isActive()) {
-                                ch.writeAndFlush(new TextWebSocketFrame(REGISTER_SUCCESS));
-                            }
-                        });
-                    } else {
+                    if (ex != null) {
                         log.warn("Register failed, userId={}, deviceId={}, reason={}", userId, deviceId, ex.getMessage());
                         ch.eventLoop().execute(() -> {
                             if (ch.isActive()) {

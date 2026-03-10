@@ -1,6 +1,6 @@
 # 消息与 WebSocket 登录域文档（主）
 
-更新时间：2026-03-08 23:10
+更新时间：2026-03-10 00:18
 
 ## 1. 范围
 
@@ -12,14 +12,14 @@
 
 ### 2.1 WebSocket 登录链路
 
-1. 客户端建立连接后，`WebSocketFrameHandler.handlerAdded` 返回欢迎文本。
+1. 客户端建立连接并完成 WebSocket 握手后，`WebSocketFrameHandler.userEventTriggered` 立即返回当前节点名文本（`nodeName`）。
 2. 未注册状态下，`handleRegistration` 解析 `data.userId/deviceId`。
 3. 调用 `UserChannelRegistry.registerUserAsync`：
     - eventLoop 写入 channel attrs
     - 虚拟线程获取分布式锁并写 Redis 路由 `ws:online:{userId}:{deviceId}`
     - 本地缓存 `deviceChannels` 建立映射
     - 必要时通知旧节点踢线
-4. 注册成功返回文本帧 `REGISTER_SUCCESS`。
+4. 注册失败返回文本帧 `REGISTER_FAILED` 并主动关闭连接。
 
 ### 2.2 消息发送与 ACK 链路
 
@@ -77,16 +77,22 @@
 {
   "packetType": 0,
   "data": {
-    "userId": 10001,
-    "deviceId": "android-9f3a"
+    "userId": 2022732862670901248,
+    "deviceId": "111"
   }
 }
 ```
 
-成功响应（文本帧）：
+连接建立成功后的首条服务端响应（文本帧，握手完成即返回）：
 
 ```json
-"REGISTER_SUCCESS"
+"node2"
+```
+
+注册失败响应（文本帧）：
+
+```json
+"REGISTER_FAILED"
 ```
 
 参数说明：
@@ -320,4 +326,3 @@ ACK 响应 `SERVER_ACK_SENT(201)`：
 
 - `packetType=400`：请求格式或参数不合法。
 - `packetType=401`：权限不足或未登录。
-

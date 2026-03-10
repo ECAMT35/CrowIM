@@ -31,6 +31,9 @@ public class NettyServer {
     @Value("${netty.websocket.port:8080}")
     private int port;
 
+    @Value("${node-name}")
+    private String nodeName;
+
     @Value("${netty.websocket.path:/ws}")
     private String path;
 
@@ -94,7 +97,8 @@ public class NettyServer {
                                             objectMapper,
                                             userChannelRegistry,
                                             virtualExecutor,
-                                            messageDispatcher
+                                            messageDispatcher,
+                                            nodeName
                                     ));
                         }
                     });

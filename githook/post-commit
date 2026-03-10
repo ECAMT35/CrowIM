@@ -6,10 +6,16 @@ messagebak="message-service/src/main/resources/application.yaml.bak"
 user="user-service/src/main/resources/application.yaml"
 userbak="user-service/src/main/resources/application.yaml.bak"
 
+gateway="gateway/src/main/resources/application.yaml"
+gatewaybak="gateway/src/main/resources/application.yaml.bak"
+
 cp "$messagebak" "$messsage" 
 rm "$messagebak" 
 
 cp "$userbak" "$user" 
-rm "$userbak" 
+rm "$userbak"
+
+cp "$gatewaybak" "$gateway"
+rm "$gatewaybak"
 
 echo "finish post-commit"

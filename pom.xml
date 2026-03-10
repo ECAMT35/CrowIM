@@ -11,6 +11,7 @@
     <modules>
         <module>message-service</module>
         <module>user-service</module>
+        <module>gateway</module>
     </modules>
 
     <groupId>com.ecamt35</groupId>
