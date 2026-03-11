@@ -52,7 +52,7 @@
         <spring-boot-starter-freemarker.version>3.5.10</spring-boot-starter-freemarker.version>
         <spring-boot-starter-mail.version>3.5.10</spring-boot-starter-mail.version>
 
-        <!--            <nacos-discovery.version>2023.0.1.2</nacos-discovery.version>-->
+        <nacos-discovery.version>2025.0.0.0</nacos-discovery.version>
         <!--            <dubbo.version>3.3.0</dubbo.version>-->
     </properties>
 
@@ -146,12 +146,12 @@
                 <version>${springdoc-openapi-starter-webmvc-ui.version}</version>
             </dependency>
 
-            <!--                    &lt;!&ndash; Nacos Spring Cloud discovery&ndash;&gt;-->
-            <!--                    <dependency>-->
-            <!--                        <groupId>com.alibaba.cloud</groupId>-->
-            <!--                        <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>-->
-            <!--                        <version>${nacos-discovery.version}</version>-->
-            <!--                    </dependency>-->
+            <dependency>
+                <groupId>com.alibaba.cloud</groupId>
+                <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+                <version>${nacos-discovery.version}</version>
+            </dependency>
+
 
             <!--                    &lt;!&ndash; dubbo &ndash;&gt;-->
             <!--                    <dependency>-->
