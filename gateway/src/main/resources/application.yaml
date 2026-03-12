@@ -1,12 +1,22 @@
 server:
-  port: 6599
+#port: TODO
 
 spring:
   application:
     name: gateway
 
   cloud:
+    nacos:
+#server-addr: TODO
+#username: TODO
+#password: TODO
+      discovery:
+        namespace: ${NACOS_NAMESPACE:public}
+        group: ${NACOS_GROUP:DEFAULT_GROUP}
+        cluster-name: ${NACOS_CLUSTER:DEFAULT}
+
     gateway:
       server:
         webflux:
           trusted-proxies: "127\\.0\\.0\\.1|10\\..*|172\\.16\\..*|192\\.168\\..*"
+

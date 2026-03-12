@@ -53,6 +53,9 @@
         <spring-boot-starter-mail.version>3.5.10</spring-boot-starter-mail.version>
 
         <nacos-discovery.version>2025.0.0.0</nacos-discovery.version>
+        <loadbalancer.version>4.3.1</loadbalancer.version>
+        <gateway.version>4.3.3</gateway.version>
+
         <!--            <dubbo.version>3.3.0</dubbo.version>-->
     </properties>
 
@@ -150,6 +153,18 @@
                 <groupId>com.alibaba.cloud</groupId>
                 <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
                 <version>${nacos-discovery.version}</version>
+            </dependency>
+
+            <!-- gateway与负载均衡 -->
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-starter-loadbalancer</artifactId>
+                <version>${loadbalancer.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-starter-gateway</artifactId>
+                <version>${gateway.version}</version>
             </dependency>
 
 

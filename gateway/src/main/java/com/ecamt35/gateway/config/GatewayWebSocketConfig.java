@@ -20,7 +20,7 @@ public class GatewayWebSocketConfig {
 //                                .rewritePath("/ws/(?<segment>.*)", "/${segment}")
                                 )
                                 // Netty IM WebSocket 服务地址，单机或 lb:ws://im-service 多实例
-                                .uri("ws://localhost:8081")
+                                .uri("lb:ws://message-service")
                 )
                 .build();
     }
