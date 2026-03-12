@@ -49,9 +49,49 @@ spring:
           stateless: true # true无状态；false有状态。如果业务中包含事务，这里改为false
           max-attempts: 3
 
+  cloud:
+    service-registry:
+      auto-registration:
+        # 纯 Netty 场景不依赖 Spring Cloud 自动注册，避免重复注册。
+        enabled: false
+    nacos:
+#server-addr: TODO
+#username: TODO
+#password: TODO
+      discovery:
+        enabled: false
+
+im:
+  nacos:
+    manual:
+      enabled: true
+      fail-fast: true
+#server-addr: TODO
+      # 注意：namespace 建议使用 Nacos 的 namespace ID。
+      namespace: ${NACOS_NAMESPACE:public}
+      group: ${NACOS_GROUP:DEFAULT_GROUP}
+      cluster-name: ${NACOS_CLUSTER:DEFAULT}
+      service-name: ${spring.application.name}
+      # 多网卡环境建议显式设置 NACOS_REGISTER_IP。
+#ip: TODO
+      # <=0 时使用 Netty 实际绑定端口
+#port: TODO
+      # true 表示临时实例，心跳由 Nacos Client 自动维护
+      ephemeral: true
+      weight: 1.0
+      register-retry-max-attempts: 3
+      register-retry-initial-backoff-ms: 500
+      metadata:
+        nodeName: ${node-name}
+        wsPath: ${netty.websocket.path:/ws}
+        wsPort: ${netty.websocket.port}
+
 logging:
   level:
     root: info
+    # Nacos 在关闭阶段可能打印线程中断噪音日志
+    com.alibaba.nacos.common.notify.NotifyCenter: ${NACOS_NOTIFY_LOG_LEVEL:OFF}
+    com.alibaba.nacos.common.notify.DefaultPublisher: ${NACOS_NOTIFY_LOG_LEVEL:OFF}
 
 netty:
   websocket:

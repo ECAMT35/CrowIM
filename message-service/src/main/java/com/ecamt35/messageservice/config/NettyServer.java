@@ -1,5 +1,6 @@
 package com.ecamt35.messageservice.config;
 
+import com.ecamt35.messageservice.service.NacosManualRegistrationService;
 import com.ecamt35.messageservice.websocket.UserChannelRegistry;
 import com.ecamt35.messageservice.websocket.WebSocketFrameHandler;
 import com.ecamt35.messageservice.websocket.dispatch.MessageDispatcher;
@@ -21,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.TimeUnit;
 
@@ -51,6 +53,8 @@ public class NettyServer {
     private UserChannelRegistry userChannelRegistry;
     @Resource(name = "virtualExecutor")
     private ExecutorService virtualExecutor;
+    @Resource
+    private NacosManualRegistrationService nacosManualRegistrationService;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -105,14 +109,20 @@ public class NettyServer {
 
             // 绑定端口并启动
             serverChannel = bootstrap.bind(port).sync().channel();
-            log.info("Netty WebSocket server started at ws://localhost:{}{}", port, path);
+            int actualPort = ((InetSocketAddress) serverChannel.localAddress()).getPort();
+            log.info("Netty WebSocket server started at ws://localhost:{}{}", actualPort, path);
+            // Netty 端口可用后直接执行 Nacos 注册，避免事件时序导致注册逻辑未触发。
+            nacosManualRegistrationService.registerAfterNettyBound(actualPort);
 
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             log.error("Netty server start interrupted", e);
             stop();
+            throw new IllegalStateException("Netty server start interrupted", e);
         } catch (Exception e) {
             log.error("Failed to start Netty server", e);
             stop();
+            throw new IllegalStateException("Failed to start Netty server", e);
         }
     }
 

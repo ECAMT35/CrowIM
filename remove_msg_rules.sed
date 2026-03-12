@@ -5,3 +5,4 @@ s/^\s*port:.*/#port: TODO/
 s/^\s*url:.*/#url: TODO/
 s/^\s*server-addr:.*/#server-addr: TODO/
 s/^\s*address:.*/#address: TODO/
+s/^\s*ip:.*/#ip: TODO/
