@@ -15,6 +15,8 @@ public class PacketTypeConstant {
     public static final int SERVER_ACK_READ = 202;
     public static final int SERVER_SUMMARY = 203;
     public static final int SERVER_MESSAGES = 204;
+    public static final int SERVER_REGISTER_ACK = 205;
+    public static final int SERVER_REGISTER_NACK = 206;
     public static final int SERVER_RELATION_ACK = 210;
     public static final int SERVER_RELATION_EVENT = 211;
 

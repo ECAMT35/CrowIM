@@ -1,6 +1,6 @@
 # 消息与 WebSocket 登录域文档（主）
 
-更新时间：2026-03-10 00:18
+更新时间：2026-03-12 15:08
 
 ## 1. 范围
 
@@ -13,13 +13,13 @@
 ### 2.1 WebSocket 登录链路
 
 1. 客户端建立连接并完成 WebSocket 握手后，`WebSocketFrameHandler.userEventTriggered` 立即返回当前节点名文本（`nodeName`）。
-2. 未注册状态下，`handleRegistration` 解析 `data.userId/deviceId`。
+2. 未注册状态下，`handleRegistration` 解析 `data.userId/deviceId/requestId`。
 3. 调用 `UserChannelRegistry.registerUserAsync`：
     - eventLoop 写入 channel attrs
     - 虚拟线程获取分布式锁并写 Redis 路由 `ws:online:{userId}:{deviceId}`
     - 本地缓存 `deviceChannels` 建立映射
     - 必要时通知旧节点踢线
-4. 注册失败返回文本帧 `REGISTER_FAILED` 并主动关闭连接。
+4. 注册成功返回 `packetType=205`（`SERVER_REGISTER_ACK`）；注册失败返回 `packetType=206`（`SERVER_REGISTER_NACK`）并主动关闭连接。
 
 ### 2.2 消息发送与 ACK 链路
 
@@ -75,8 +75,8 @@
 
 ```json
 {
-  "packetType": 0,
   "data": {
+    "requestId": "reg-20260312-001",
     "userId": 2022732862670901248,
     "deviceId": "111"
   }
@@ -89,16 +89,48 @@
 "node2"
 ```
 
-注册失败响应（文本帧）：
+注册成功响应 `SERVER_REGISTER_ACK(205)`：
 
 ```json
-"REGISTER_FAILED"
+{
+  "packetType": 205,
+  "data": {
+    "requestId": "reg-20260312-001",
+    "userId": 2022732862670901248,
+    "deviceId": "111",
+    "nodeName": "node2",
+    "serverTimestamp": 1773000000000,
+    "code": 200,
+    "message": "register success"
+  }
+}
+```
+
+注册失败响应 `SERVER_REGISTER_NACK(206)`：
+
+```json
+{
+  "packetType": 206,
+  "data": {
+    "requestId": "reg-20260312-001",
+    "userId": 2022732862670901248,
+    "deviceId": "111",
+    "nodeName": "node2",
+    "serverTimestamp": 1773000000001,
+    "code": 1001,
+    "message": "register failed",
+    "errorDetail": "Device is being registered by another node, please retry later"
+  }
+}
 ```
 
 参数说明：
 
+- `data.requestId`：客户端请求 ID，可用于幂等去重与回包关联，建议全局唯一。
 - `data.userId`：当前登录用户 ID。
 - `data.deviceId`：设备唯一标识。
+- `serverTimestamp`：服务端生成时间戳（毫秒）。
+- `code`：状态码，`200` 成功；`400` 参数问题；`1001` 业务处理失败。
 
 ### 5.2 发送消息 `CLIENT_REQUEST_SENT(100)`
 
@@ -326,3 +358,4 @@ ACK 响应 `SERVER_ACK_SENT(201)`：
 
 - `packetType=400`：请求格式或参数不合法。
 - `packetType=401`：权限不足或未登录。
+- 登录注册阶段错误统一使用 `packetType=206`，并在 `data.code` 中给出具体错误码。

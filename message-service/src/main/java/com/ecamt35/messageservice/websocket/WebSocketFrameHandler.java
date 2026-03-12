@@ -1,9 +1,13 @@
 package com.ecamt35.messageservice.websocket;
 
 import cn.hutool.core.convert.Convert;
+import com.ecamt35.messageservice.constant.BusinessErrorCodeConstant;
 import com.ecamt35.messageservice.constant.PacketTypeConstant;
+import com.ecamt35.messageservice.constant.ProtocolErrorCodeConstant;
 import com.ecamt35.messageservice.model.dto.CommonPacketDto;
 import com.ecamt35.messageservice.model.vo.PushVo;
+import com.ecamt35.messageservice.model.vo.RegisterAckVo;
+import com.ecamt35.messageservice.model.vo.RegisterNackVo;
 import com.ecamt35.messageservice.websocket.dispatch.MessageDispatcher;
 import com.ecamt35.messageservice.websocket.dispatch.WsContext;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -158,15 +162,30 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
             commonPacketDto = objectMapper.readValue(message, CommonPacketDto.class);
         } catch (JsonProcessingException e) {
             log.info("Invalid JSON format: {}", message, e);
-            new WsContext(ctx.channel(), objectMapper, userChannelRegistry)
-                    .send(new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, message));
+            sendRegisterNack(
+                    ctx.channel(),
+                    null,
+                    null,
+                    null,
+                    ProtocolErrorCodeConstant.BAD_REQUEST,
+                    "invalid register payload",
+                    "invalid json format"
+            );
             return;
         }
 
         Map<String, Object> data = commonPacketDto.getData();
+        String requestId = data == null ? null : Convert.toStr(data.get("requestId"));
         if (data == null || data.isEmpty()) {
-            new WsContext(ctx.channel(), objectMapper, userChannelRegistry)
-                    .send(new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, message));
+            sendRegisterNack(
+                    ctx.channel(),
+                    requestId,
+                    null,
+                    null,
+                    ProtocolErrorCodeConstant.BAD_REQUEST,
+                    "invalid register payload",
+                    "data is required"
+            );
             ctx.close();
             return;
         }
@@ -174,8 +193,15 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
         Long userId = Convert.toLong(data.get("userId"));
 
         if (userId == null || deviceId == null || deviceId.isBlank()) {
-            new WsContext(ctx.channel(), objectMapper, userChannelRegistry)
-                    .send(new PushVo(PacketTypeConstant.INVALID_MESSAGE_FORMAT, message));
+            sendRegisterNack(
+                    ctx.channel(),
+                    requestId,
+                    userId,
+                    deviceId,
+                    ProtocolErrorCodeConstant.BAD_REQUEST,
+                    "invalid register payload",
+                    "userId/deviceId is required"
+            );
             ctx.close();
             return;
         }
@@ -186,12 +212,80 @@ public class WebSocketFrameHandler extends SimpleChannelInboundHandler<WebSocket
                     if (ex != null) {
                         log.warn("Register failed, userId={}, deviceId={}, reason={}", userId, deviceId, ex.getMessage());
                         ch.eventLoop().execute(() -> {
-                            if (ch.isActive()) {
-                                ch.writeAndFlush(new TextWebSocketFrame("REGISTER_FAILED"));
-                                ch.close();
-                            }
+                            sendRegisterNack(
+                                    ch,
+                                    requestId,
+                                    userId,
+                                    deviceId,
+                                    BusinessErrorCodeConstant.BIZ_ERROR,
+                                    "register failed",
+                                    ex.getMessage()
+                            );
+                            ch.close();
                         });
+                        return;
                     }
+                    sendRegisterAck(ch, requestId, userId, deviceId);
                 });
+    }
+
+    /**
+     * 发送注册成功应答，返回用户与节点信息供客户端建立会话上下文。
+     * 参数：
+     *
+     * @param channel   当前连接通道
+     * @param requestId 客户端请求 ID，可为空
+     * @param userId    用户 ID
+     * @param deviceId  设备 ID
+     */
+    private void sendRegisterAck(Channel channel, String requestId, Long userId, String deviceId) {
+        new WsContext(channel, objectMapper, userChannelRegistry)
+                .send(new PushVo(
+                        PacketTypeConstant.SERVER_REGISTER_ACK,
+                        new RegisterAckVo(
+                                requestId,
+                                userId,
+                                deviceId,
+                                nodeName,
+                                System.currentTimeMillis(),
+                                ProtocolErrorCodeConstant.SUCCESS,
+                                "register success"
+                        )
+                ));
+    }
+
+    /**
+     * 发送注册失败应答，返回错误码和失败原因供客户端重试与排障。
+     * 参数：
+     *
+     * @param channel     当前连接通道
+     * @param requestId   客户端请求 ID，可为空
+     * @param userId      用户 ID，可为空
+     * @param deviceId    设备 ID，可为空
+     * @param code        协议/业务错误码
+     * @param message     错误摘要
+     * @param errorDetail 错误细节
+     */
+    private void sendRegisterNack(Channel channel,
+                                  String requestId,
+                                  Long userId,
+                                  String deviceId,
+                                  Integer code,
+                                  String message,
+                                  String errorDetail) {
+        new WsContext(channel, objectMapper, userChannelRegistry)
+                .send(new PushVo(
+                        PacketTypeConstant.SERVER_REGISTER_NACK,
+                        new RegisterNackVo(
+                                requestId,
+                                userId,
+                                deviceId,
+                                nodeName,
+                                System.currentTimeMillis(),
+                                code,
+                                message,
+                                errorDetail
+                        )
+                ));
     }
 }
