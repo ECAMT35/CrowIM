@@ -69,7 +69,7 @@ public class MessageDispatchService {
         }
         for (ConversationMember m : members) {
             Long uid = m.getUserId();
-            if (uid == null || uid.equals(senderId)) {
+            if (uid == null) {
                 continue;
             }
 
